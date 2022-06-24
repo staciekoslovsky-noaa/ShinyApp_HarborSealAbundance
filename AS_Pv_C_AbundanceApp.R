@@ -59,13 +59,13 @@ con <- RPostgres::dbConnect(Postgres(),
                             password = rstudioapi::askForPassword(paste("Enter your DB password for user account: ", Sys.getenv("pep_user"), sep = "")))
 
 # Get data from DB ---------------------------------------------
-abund <- sf::st_read(con, query = "SELECT id, polyid, year, abund_est, abund_b95, abund_t95, trend_est, trend_b95, trend_t95, surveyed, stockname, geom FROM surv_pv_cst.geo_abundance", geometry_column = "geom")
+abund <- sf::st_read(con, query = "SELECT id, polyid, year, abund_est, abund_b95, abund_t95, trend_est, trend_b95, trend_t95, surveyed, stockname, geom FROM surv_pv_cst.geo_abundance_4shiny", geometry_column = "geom")
 abund <- sf::st_set_crs(abund, 4326)
 abund <- sf::st_shift_longitude(abund)
                                
 abund$secondpolyid <- paste(as.character(abund$polyid), "_selectedLayer", sep="")
 
-polys <- sf::st_read(con, query = "SELECT * FROM surv_pv_cst.geo_abundance WHERE year = \'2018\'", geometry_column = "geom")
+polys <- sf::st_read(con, query = "SELECT * FROM surv_pv_cst.geo_abundance_4shiny WHERE year = \'2018\'", geometry_column = "geom")
 st_shift_longitude(polys)
 
 RPostgres::dbDisconnect(con)
