@@ -74,8 +74,6 @@ get_opacity <- function(x, bins){
   return(opacity_vector)
 }
 
-
-
 ## Install library packages -----------------------------------------
 install_pkg("shiny")
 install_pkg("shinythemes")
@@ -98,7 +96,7 @@ install_pkg("sf")
 ### install_pkg("devtools")
 ### install_github("MHaringa/spatialrisk")
 
-
+sf::sf_use_s2(FALSE)
 
 ## Get and process data from GitHub -----------------------------------------
 
@@ -128,13 +126,13 @@ abundance_filtered <- abundance %>%
 # Geojson file with polygons data
 url.poly <- "https://raw.githubusercontent.com/StacieKozHardy/CoastalPv_AbundanceApp/main/Data/survey_polygons.geojson"
 survey_polygons <- geojson_read(url.poly, what = "sp") %>%
-  sf::st_as_sf() %>%
+  sf::st_as_sf(crs = 4326) %>%
   rename(polygon_id = id)
 
 # Geojson file with the stocks
 url.stocks <- "https://raw.githubusercontent.com/StacieKozHardy/CoastalPv_AbundanceApp/main/Data/survey_stocks.geojson"
 stock_polygons <- geojson_read(url.stocks, what = "sp") %>%
-  sf::st_as_sf()
+  sf::st_as_sf(crs = 4326)
 
 
 
@@ -162,9 +160,9 @@ survey_polygons$centroid.y <- st_coordinates(sf::st_centroid(survey_polygons))[,
 # Move stock polygons across dateline
 stock_polygons$geometry <- (sf::st_geometry(stock_polygons) + c(360,90)) %% c(360) - c(0,90)
 
-# Convert back to sp layers
-survey_polygons <- as(survey_polygons, Class = "Spatial")
-stock_polygons  <- as(stock_polygons, Class = "Spatial")
+# Convert back to sp layers -- not needed if I can get the app working with sf layers
+# survey_polygons <- as(survey_polygons, Class = "Spatial")
+# stock_polygons  <- as(stock_polygons, Class = "Spatial")
 
 # # Create new columns with coordinates of each polygon's centroid
 # survey_polygons$centroid.x <- survey_polygons@polygons[[j]]@labpt[1]
@@ -283,7 +281,7 @@ ui <- fluidPage(theme = shinytheme("superhero"),
                 br(),
                 (selectInput(inputId = "stock.select",
                              label = div(style = "font-size:16px", "Select Stock (if applicable)"),
-                             choices = c("All", survey_polygons@data$stockname),
+                             choices = c("All", survey_polygons$stockname),
                              multiple = TRUE,
                              selected = "All")),
                 br(),
@@ -329,7 +327,7 @@ server <- function(input, output, session) {
     pal <- colorBin(
       palette = "inferno",
       reverse = TRUE,
-      domain = na.omit(survey_polygons@data$abund_est),
+      domain = na.omit(survey_polygons$abund_est),
       bins = abund_bins,
       pretty = FALSE,
       na.color = "#00000000"
@@ -337,11 +335,11 @@ server <- function(input, output, session) {
     
     factpal <- colorFactor(
       palette = "mako", 
-      domain = stock_polygons@data$stockname
+      domain = stock_polygons$stockname
       )
     
     map %>% 
-      addDrawToolbar(
+      leaflet.extras::addDrawToolbar(
         targetGroup = 'draw',
         polylineOptions = FALSE,
         markerOptions = FALSE,
@@ -359,28 +357,28 @@ server <- function(input, output, session) {
       addPolygons(data = stock_polygons,
                   fillOpacity = 0.1,
                   opacity = 0.4,
-                  fillColor = ~factpal(stock_polygons@data$stockname), #"black",
+                  fillColor = ~factpal(stock_polygons$stockname), #"black",
                   color = "gray",
                   weight = 2,
-                  label = stock_polygons@data$stockname,
+                  label = stock_polygons$stockname,
                   labelOptions = labelOptions(sticky = FALSE, noHide = FALSE, textOnly = TRUE, direction = "center")) %>% 
       addPolygons(data = survey_polygons,
                   layerId = ~polyid,
                   group = "stockname",
-                  popup = ~htmltools::htmlEscape(paste("You have selected the following survey unit: ", survey_polygons@data$polyid, 
-                                                       ". It is found in the ", survey_polygons@data$stockname, 
+                  popup = ~htmltools::htmlEscape(paste("You have selected the following survey unit: ", survey_polygons$polyid, 
+                                                       ". It is found in the ", survey_polygons$stockname, 
                                                        " stock. In ", most_recent_year, 
                                                        ", the harbor seal abundance estimate for this survey unit was ", 
-                                                       round(survey_polygons@data$abund_est, 2), " with a confidence interval of ", 
-                                                       round(survey_polygons@data$abund_b95, 2), "-", round(survey_polygons@data$abund_t95, 2), 
-                                                       ", and the 8-year trend in harbor seal abundance was ", round(survey_polygons@data$trend_est, 2), 
-                                                       " seals per year. ", survey_polygons@data$survey_date, sep = "")),
+                                                       round(survey_polygons$abund_est, 2), " with a confidence interval of ", 
+                                                       round(survey_polygons$abund_b95, 2), "-", round(survey_polygons$abund_t95, 2), 
+                                                       ", and the 8-year trend in harbor seal abundance was ", round(survey_polygons$trend_est, 2), 
+                                                       " seals per year. ", survey_polygons$survey_date, sep = "")),
                   weight = 1,
-                  fillColor = ~pal(survey_polygons@data$abund_est),
-                  color = ~pal(survey_polygons@data$abund_est),
+                  fillColor = ~pal(survey_polygons$abund_est),
+                  color = ~pal(survey_polygons$abund_est),
                   opacity = 0.7,
-                  fillOpacity = get_opacity(as.vector(survey_polygons@data$abund_est), abund_bins),
-                  label = survey_polygons@data$polyid,
+                  fillOpacity = get_opacity(as.vector(survey_polygons$abund_est), abund_bins),
+                  label = survey_polygons$polyid,
                   labelOptions = labelOptions(sticky = TRUE, noHide = FALSE, textOnly = TRUE, direction = "center")) %>% 
       addLegend("bottomleft",
                 pal = pal,
@@ -394,127 +392,96 @@ server <- function(input, output, session) {
   })
   
   
-  #Reactive dataset for abundance and effort plots
+  # Reactive dataset for abundance and effort plots
   plotted.data <- reactiveValues(values = abundance)
   
-  #Reactive dataset for trend plot - aimed towards future implementations of trend inputs
+  # Reactive dataset for trend plot - aimed towards future implementations of trend inputs
   trend.data <- reactiveValues(values = abundance)
   
-  #reactive value that determines the title of the plots:
-  #When the user filters by stock, it displays the stock.
-  #when the user filters by shape, it says "in the selected polygons"
+  # Reactive value that determines the title of the plots
   title.label <- reactiveVal(value = "in All Stocks")
   
+  # Reactive value that zooms map to centroid of selected features
   zoom.to.stock <- reactiveVal(value = FALSE)
   
   
-  #### Update reactive dataset when button is pressed ####
+  #### Update reactive dataset when button is pressed 
   observeEvent(input$update, {
-    # Print("button pressed!")
+    # Code for changing dataset for trend: (have to repeat in each if/else block)
+    
+    #if (input$trend.input.data == Abundance){
+    #trend.data$values <- abundance %>% filter(stockname == input$stock.select)
+    #}
+    # else{
+    #   trend.data$values <- otherdataset %>% filter(stockname == input$stock.select
+    # }
+    
+    # Process data if "stock" selected ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    
     if(input$filter == "Stock"){
       
       # Update the dataset to be filtered by the selected stock
       if(input$stock.select != "All"){
         plotted.data$values <- abundance %>% filter(stockname == input$stock.select)
-        
-        
-        #code for changing dataset for trend: (have to repeat in each if/else block)
-        
-        #if (input$trend.input.data == Abundance){
-        #trend.data$values <- abundance %>% filter(stockname == input$stock.select)
-        #}
-        # else{
-        #   trend.data$values <- otherdataset %>% filter(stockname == input$stock.select
-        # }
-        
         title.label(paste("in the", input$stock.select, "Stock"))
       }
-      else{
+      else {
         plotted.data$values <- abundance
         title.label("in All Stocks")
       }
       zoom.to.stock(TRUE)
     }
     
+    # Process data if "polygon" selected ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    
     else if(input$filter == "Polygon"){
       
-      #If there is no drawn shape, revert to default data
-      #(otherwise there is a fatal error and the r session is aborted)
+      # If there is no drawn shape, revert to default data (otherwise there is a fatal error and the r session is aborted)
       if(is.null(input$map1_draw_new_feature) || (input$map1_draw_new_feature$properties$feature_type == "circle")){
         plotted.data$values <- abundance
         title.label("in All Stocks")
       }
-      else{
+      else {
+        # Drawn polygon's attributes
+        drawn <- input$map1_draw_new_feature
+        polygon_coordinates <- do.call(rbind,lapply(drawn$geometry$coordinates[[1]],function(x){c(x[[1]][1],x[[2]][1])}))#drawn$geometry$coordinates
+        drawn_polygon <- st_polygon(list(polygon_coordinates[[1]], polygon_coordinates[[2]])) %>%
+          st_set_crs( 4326)
+  
+        found_in_bounds <- st_join(sf::st_set_crs(drawn_polygon, 4326), sf::st_set_crs(survey_polygons, 4326))
         
-        feature <- input$map1_draw_new_feature
-        #print(feature)
-        
-        feature_x <- c()
-        feature_y <- c()
-        
-        #Obtain the coordinates of the polygon
-        for (i in 1:length(feature$geometry$coordinates[[1]])){
-          feature_x <- append(feature_x, feature$geometry$coordinates[[1]][[i]][[1]])
-          feature_y <- append(feature_y, feature$geometry$coordinates[[1]][[i]][[2]])
-        }
-        
-        #Check if the centroid of each existing polygon is inside of the new one
-        overlapping_ids <- c()
-        for(j in 1:length(survey_polygons@polygons)){
-          centroid_x <- survey_polygons@polygons[[j]]@labpt[1]
-          centroid_y <- survey_polygons@polygons[[j]]@labpt[2]
-          if(is_inside_polygon(feature_x, feature_y, centroid_x, centroid_y)){
-            # essentially uses the coordinate list to create a new polygon (on a canvas, not spatial), then checks if the point is in that polygon
-            overlapping_ids <- append(overlapping_ids, survey_polygons@data$polygon_id[j])
-          }
-        }
-        
-        #Subset the data accordingly
-        overlapping_data <- subset(survey_polygons@data, survey_polygons@data$polygon_id %in% overlapping_ids)
-        
-        
-        plotted.data$values <- subset(abundance, abundance$polyid %in% overlapping_data$polyid)
-        #create reactive dataset for the trend plot itself- change based on what user has selected
-        
+        # Subset data by polyids within polygon
+        plotted.data$values <- subset(abundance, abundance$polyid %in% found_in_bounds$polyid)
         title.label("in the Selected Survey Units")
       }
       zoom.to.stock(TRUE)
     }
+    
+    # Process data if "circle" selected ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    
     else if(input$filter == "Circle"){
       
-      #If there is no drawn shape, revert to default data
-      #(otherwise there is a fatal error and the r session is aborted)
+      # If there is no drawn circle, revert to default data (otherwise there is a fatal error and the r session is aborted)
       if(is.null(input$map1_draw_new_feature) || (input$map1_draw_new_feature$properties$feature_type != "circle")){
         plotted.data$values <- abundance
         title.label("in All Stocks")
       }
-      else{
+      else {
+        # Drawn circle's attributes
+        drawn <- input$map1_draw_new_feature
+        drawn_circle <- data.frame(lat = drawn$geometry$coordinates[[2]], long = drawn$geometry$coordinates[[1]]) %>%
+          sf::st_as_sf(coords = c("long", "lat"), crs = 4326) %>%
+          sf::st_transform(crs = 32606) %>%
+          sf::st_buffer(dist = drawn$properties$radius) %>%
+          sf::st_transform(4326) 
         
-        #drawn feature's attributes
-        feature <- input$map1_draw_new_feature
-        feature_x <- feature$geometry$coordinates[[1]]
-        feature_y <- feature$geometry$coordinates[[2]]
-        radius = feature$properties$radius
+        drawn_circle$geometry <- (sf::st_geometry(drawn_circle) + c(360,90)) %% c(360) - c(0,90)
+
+        found_in_bounds <- st_join(sf::st_set_crs(drawn_circle, 4326), sf::st_set_crs(survey_polygons, 4326))
+        print(found_in_bounds)
         
-        
-        # #data frame of the centroids
-        coords <- data.frame(lat = survey_polygons@data$centroid.y, lon = survey_polygons@data$centroid.x)
-        # View(coords)
-        
-        
-        # the circle's location
-        me <- data.frame(lat = feature_y, lon = feature_x)
-        
-        #obtaining the coordinates within radius of the circle
-        overlapping <- spatialrisk::points_in_circle(coords, me$lon[1], me$lat[1], radius = radius)
-        #View(overlapping)
-        
-        #Subset the data accordingly
-        overlapping_data <- subset(survey_polygons@data, survey_polygons@data$centroid.y %in% overlapping$lat)
-        
-        #update dataset
-        plotted.data$values <- subset(abundance, abundance$polyid %in% overlapping_data$polyid)
-        
+        # Subset data by polyids within polygon
+        plotted.data$values <- subset(abundance, abundance$polyid %in% found_in_bounds$polyid)
         title.label("Within the Given Radius")
       }
       zoom.to.stock(TRUE)
@@ -524,7 +491,7 @@ server <- function(input, output, session) {
         plotted.data$values <- abundance
         title.label("in All Stocks")
       }
-      else{
+      else {
         plotted.data$values <- subset(abundance, abundance$polyid == input$map1_shape_click$id)
         
         title.label(paste("in Survey Unit:", input$map1_shape_click$id))
@@ -537,7 +504,7 @@ server <- function(input, output, session) {
     leafletProxy("map1") %>% 
       clearGroup(group = "lines")
     
-    currently_plotted_ids <- subset(survey_polygons, survey_polygons@data$polyid %in% plotted.data$values$polyid)
+    currently_plotted_ids <- subset(survey_polygons, survey_polygons$polyid %in% plotted.data$values$polyid)
     
     
     leafletProxy("map1") %>% 
@@ -553,8 +520,8 @@ server <- function(input, output, session) {
       
       View(currently_plotted_ids)
       
-      subset_x_centroid <- mean(currently_plotted_ids@data$centroid.x)
-      subset_y_centroid <- mean(currently_plotted_ids@data$centroid.y)
+      subset_x_centroid <- mean(currently_plotted_ids$centroid.x)
+      subset_y_centroid <- mean(currently_plotted_ids$centroid.y)
       
       
       leafletProxy("map1") %>% 
@@ -589,7 +556,7 @@ server <- function(input, output, session) {
                 "high.abund" = sum(abund_t95),
                 "effort" = sum(surveyed)) 
     
-    # inferno_colors <-  unique(pal(survey_polygons@data$abund_est))
+    # inferno_colors <-  unique(pal(survey_polygons$abund_est))
     
     # A caption for the chart is available if we'd be interested in including that
     # Data labels in plotOptions -> line -> dataLabels
