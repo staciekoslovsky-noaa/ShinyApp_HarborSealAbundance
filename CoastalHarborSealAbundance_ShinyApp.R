@@ -32,15 +32,6 @@ has_been_surveyed <- function(x){
   return(new_vector)
 }
 
-# Function to check if a point is inside of a given polygon
-is_inside_polygon <- function(x, y, point.x, point.y){
-  inside = FALSE
-  if (sp::point.in.polygon(point.x, point.y, x, y)){
-    inside = TRUE
-  }
-  return(inside)
-}
-
 # Function to assign opacity values to polygons based on abundance
 get_opacity <- function(x, bins){
   opacity_vector <- c()
@@ -75,26 +66,19 @@ get_opacity <- function(x, bins){
 }
 
 ## Install library packages -----------------------------------------
+install_pkg("tidyverse")
 install_pkg("shiny")
 install_pkg("shinythemes")
 install_pkg("shinyWidgets")
 install_pkg("leaflet")
-install_pkg("tidyverse")
-install_pkg("sp")
-install_pkg("geojsonio")
-install_pkg("htmltools")
 install_pkg("leaflet.extras")
 install_pkg("leaflet.extras2")
+install_pkg("htmltools")
 install_pkg("viridis")
 install_pkg("highcharter")
 install_pkg("scales")
-install_pkg("rgeos")
-install_pkg("spatialrisk")
+install_pkg("geojsonio")
 install_pkg("sf")
-
-# Alternate way to download spatialrisk
-### install_pkg("devtools")
-### install_github("MHaringa/spatialrisk")
 
 sf::sf_use_s2(FALSE)
 
@@ -160,14 +144,6 @@ survey_polygons$centroid.y <- st_coordinates(sf::st_centroid(survey_polygons))[,
 # Move stock polygons across dateline
 stock_polygons$geometry <- (sf::st_geometry(stock_polygons) + c(360,90)) %% c(360) - c(0,90)
 
-# Convert back to sp layers -- not needed if I can get the app working with sf layers
-# survey_polygons <- as(survey_polygons, Class = "Spatial")
-# stock_polygons  <- as(stock_polygons, Class = "Spatial")
-
-# # Create new columns with coordinates of each polygon's centroid
-# survey_polygons$centroid.x <- survey_polygons@polygons[[j]]@labpt[1]
-# survey_polygons$centroid.y <- survey_polygons@polygons[[j]]@labpt[2])
-
 # Calculate the center point of the centroids (x and y)
 mean_x = (max(survey_polygons$centroid.x) + min(survey_polygons$centroid.x)) / 2
 mean_y = (max(survey_polygons$centroid.y) + min(survey_polygons$centroid.y)) / 2
@@ -227,6 +203,14 @@ contact_info <- "This application was developed by Allison James as part of a su
   For questions regarding the harbor seal aerial survey project, contact Josh London (josh.london@noaa.gov), and 
   for questions regarding the statistical methods used to calculate the harobr seal abundance estimates, contact Jay Ver Hoef (jay.verhoef@noaa.gov)."
 
+data_access <- paste("The data we are using to power this application are publicly available for viewing and download. Links to each of these datasets are below: <br/>
+  
+  <ui><li>", a("Alaska Harbor Seal Aerial Survey Units", href = "https://www.arcgis.com/home/item.html?id=c63ccb17b9b144c4a529ee6a3d039665"), 
+  "</li><li>", a("Alaska Harbor Seal Abundance 2018", href = "https://www.arcgis.com/home/item.html?id=e69222ad91564422aba9ee0d2e70bfe2"),
+  "</li><li>", a("Alaska Harbor Seal Haul-Out Locations", href = "https://www.arcgis.com/home/item.html?id=2c6ca3e595024d3990127bfe061d7ed3"),
+  sep = "")
+
+
 
 ## Define UI -----------------------------------------
 ui <- fluidPage(theme = shinytheme("superhero"),
@@ -247,6 +231,7 @@ ui <- fluidPage(theme = shinytheme("superhero"),
               tabPanel("Introduction", div(style = 'overflow-y:scroll;height:300px', HTML(introduction))),
               tabPanel("Disclaimers", div(style = 'overflow-y:scroll;height:300px', HTML(disclaimer))),
               tabPanel("Contact", div(style = 'overflow-y:scroll;height:300px', HTML(contact_info))),
+              tabPanel("Data Access", div(style = 'overflow-y:scroll;height:300px', HTML(data_access))),
               type = "pills" #gives the highlighted tab a background color
             )
             ),
@@ -444,9 +429,15 @@ server <- function(input, output, session) {
       else {
         # Drawn polygon's attributes
         drawn <- input$map1_draw_new_feature
-        polygon_coordinates <- do.call(rbind,lapply(drawn$geometry$coordinates[[1]],function(x){c(x[[1]][1],x[[2]][1])}))#drawn$geometry$coordinates
-        drawn_polygon <- st_polygon(list(polygon_coordinates[[1]], polygon_coordinates[[2]])) %>%
-          st_set_crs( 4326)
+        polygon_coordinates <- do.call(rbind, lapply(drawn$geometry$coordinates[[1]], function(x){c(x[[1]][1],x[[2]][1])}))
+
+        drawn_polygon <- data.frame(lat = polygon_coordinates[, 2], long = polygon_coordinates[, 1]) %>%
+          st_as_sf(coords = c("long", "lat"), crs = 4326) %>%
+          summarise(geometry = st_combine(geometry)) %>%
+          st_cast("POLYGON")
+        print(drawn_polygon)
+        #drawn_polygon$geometry <- (sf::st_geometry(drawn_polygon) + c(360,90)) %% c(360) - c(0,90)
+        #print(drawn_polygon)
   
         found_in_bounds <- st_join(sf::st_set_crs(drawn_polygon, 4326), sf::st_set_crs(survey_polygons, 4326))
         
@@ -469,12 +460,12 @@ server <- function(input, output, session) {
       else {
         # Drawn circle's attributes
         drawn <- input$map1_draw_new_feature
+        
         drawn_circle <- data.frame(lat = drawn$geometry$coordinates[[2]], long = drawn$geometry$coordinates[[1]]) %>%
           sf::st_as_sf(coords = c("long", "lat"), crs = 4326) %>%
           sf::st_transform(crs = 32606) %>%
           sf::st_buffer(dist = drawn$properties$radius) %>%
           sf::st_transform(4326) 
-        
         drawn_circle$geometry <- (sf::st_geometry(drawn_circle) + c(360,90)) %% c(360) - c(0,90)
 
         found_in_bounds <- st_join(sf::st_set_crs(drawn_circle, 4326), sf::st_set_crs(survey_polygons, 4326))
