@@ -1,6 +1,6 @@
 # Coastal Harbor Seal Abundance: Shiny App
 # Original code written by Allison James
-# Code updated and maintained by Stacie Hardy
+# Code updated and maintained by Stacie Koslovsky
 
 ## Create functions -----------------------------------------
 
@@ -13,23 +13,81 @@ install_pkg <- function(x){
   }
 }
 
-# Function to check if the selected plot has ever been surveyed
-has_been_surveyed <- function(x){
-  new_vector <- c()
-  
-  for (element in x){
-    if(!is.na(element) && !is.null(element) && element != "NA"){
-      element <- paste("This survey unit was last surveyed on ", element, ".", sep = "")
-      new_vector <- new_vector %>% append(element)
-    }
-    else{
-      #print("we got a null!")
-      element <- "This survey unit has not been surveyed."
-      new_vector <- new_vector %>% append(element)
-      #print(element)
-    }
+# Function to return RData file with user-specified name
+load_rdata <- function(fileName){
+  #loads an RData file, and returns it
+  load(fileName)
+  get(ls()[ls() != "fileName"])
+}
+
+# Function to process data cube to desired output
+calculate_abundance_trend <- function(data_cube, subset_type, group_by_var, most_recent_year = NULL, poly_metadata = NULL) {
+  if(subset_type == "all"){
+    subset <- data_cube
+    polys <- unique(subset$polyid)
   }
-  return(new_vector)
+  if(subset_type == "most_recent"){
+    subset <- data_cube %>%
+      filter(year == most_recent_year) 
+  }
+  
+  # Create summary dataset
+  subset <- subset %>%
+    group_by_at(group_by_var) %>%
+    summarise(abund = sum(abund))
+  
+  if(subset_type == "most_recent"){
+    abund_ci <- subset %>%
+      group_by(polyid, year) %>%
+      arrange(abund) %>%
+      mutate(rank = sequence(n())) %>%
+      ungroup() %>%
+      filter(rank == 25 | rank == 975) %>%
+      select(-cube, -year) 
+    
+    subset_abund <- subset %>%
+      group_by(polyid) %>%
+      summarise(abund_est = mean(abund)) %>%
+      left_join(abund_ci %>% filter(rank == 25) %>% select(polyid, abund) %>% rename(abund_b95 = abund), by = "polyid") %>%
+      left_join(abund_ci %>% filter(rank == 975) %>% select(polyid, abund) %>% rename(abund_t95 = abund), by = "polyid")
+  } else {
+    abund_ci <- subset %>%
+      group_by(year) %>%
+      arrange(abund) %>%
+      mutate(rank = sequence(n())) %>%
+      ungroup() %>%
+      filter(rank == 25 | rank == 975) %>%
+      select(-cube) %>%
+      unique()
+
+    subset_abund <- subset %>%
+      group_by(year) %>%
+      summarise(abund_est = mean(abund)) %>%
+      left_join(abund_ci %>% filter(rank == 25) %>% select(year, abund) %>% rename(abund_b95 = abund), by = "year") %>%
+      left_join(abund_ci %>% filter(rank == 975) %>% select(year, abund) %>% rename(abund_t95 = abund), by = "year")
+  }
+  
+  subset_trend <- subset_abund %>%
+    rename(trend_est = abund_est,
+           trend_b95 = abund_b95,
+           trend_t95 = abund_t95)
+  
+  # Get survey effort data and 
+  if(subset_type == "most_recent"){
+    subset_summ <- subset_abund %>%
+      left_join(subset_trend, by = c("polyid"))
+  } else {
+    effort <- poly_metadata %>%
+      filter(polyid %in% polys) %>%
+      group_by(year) %>%
+      summarise(effort = sum(surveyed))
+    
+    subset_summ <- subset_abund %>%
+      left_join(subset_trend, by = "year") %>%
+      left_join(effort, by = "year")
+  }
+  
+  return(subset_summ)
 }
 
 # Function to assign opacity values to polygons based on abundance
@@ -84,28 +142,26 @@ sf::sf_use_s2(FALSE)
 
 ## Get and process data from GitHub -----------------------------------------
 
-# Abundance data
-url.abund <- "https://raw.githubusercontent.com/StacieKozHardy/CoastalPv_AbundanceApp/main/Data/geo_abundance_4shiny.csv"
-abundance <- read.csv(url(url.abund)) %>%
-  filter(!is.na(year)) %>%
-  mutate(year  = as.numeric(year),
-         abund_est = as.numeric(abund_est),
-         abund_b95 = as.numeric(abund_b95),
-         abund_t95 = as.numeric(abund_t95),
-         trend_est = as.numeric(trend_est),
-         trend_b95 = as.numeric(trend_b95),
-         trend_t95 = as.numeric(trend_t95)) %>%
-  rename(abundance_id = id)
-  
-# Filters the data so that it's the most recent year while removing NA values
-most_recent_year <- max(abundance$year, na.rm = TRUE)
+# Survey polygon data
+url.poly_metadata <- "https://raw.githubusercontent.com/staciekoslovsky-noaa/CoastalPv_AbundanceApp/main/Data/geo_abundance_4shiny.csv"
+poly_metadata <- read.csv(url(url.poly_metadata)) %>%
+  filter(year != 'NULL') %>%
+  mutate(year  = as.numeric(year)) %>%
+  select(polyid, stockname, year, surveyed, last_surveyed)
 
-# Create dataset of abundance from most-recent year and includes field for abundance by stock
-abundance_filtered <- abundance %>%
-  filter(year == most_recent_year) %>%
-  group_by(stockname) %>% 
-  mutate("total.abund" = sum(abund_est)) %>%
-  ungroup()
+# Abundance data cube
+url.data_cube <- "C://smk/akpv_datacube.rda"
+data_cube <- load_rdata(url.data_cube) %>% 
+  data.frame() %>%
+  rownames_to_column() %>%
+  rename(polyid = rowname) %>%
+  pivot_longer(
+    cols = starts_with("X"), 
+    names_to = "year",
+    values_to = "abund") %>%
+  mutate(cube = sub('.*\\.', '', year)) %>%
+  mutate(cube = ifelse(substring(cube, 1, 1) == "X", 0, cube),
+         year = as.numeric(substring(year, 2, 5)))
 
 # Geojson file with polygons data
 url.poly <- "https://raw.githubusercontent.com/StacieKozHardy/CoastalPv_AbundanceApp/main/Data/survey_polygons.geojson"
@@ -118,22 +174,30 @@ url.stocks <- "https://raw.githubusercontent.com/StacieKozHardy/CoastalPv_Abunda
 stock_polygons <- geojson_read(url.stocks, what = "sp") %>%
   sf::st_as_sf(crs = 4326)
 
+rm(url.data_cube, url.poly, url.poly_metadata, url.stocks)
+
+
+
 
 
 ## Prepare survey_polygons and stock_polygons for map -----------------------------------------
+# Filter the data cube so that it's the most recent year while removing NA values
+most_recent_year <- 2016 #max(colnames(data_cube[[1]])) !!!NEED THIS TO WORK OFF OF max VALUE!!!
+
+# Create dataset of abundance from most-recent year
+abundance_most_recent <- calculate_abundance_trend(data_cube = data_cube, group_by_var = c('polyid', 'cube', 'year'), subset_type = 'most_recent', most_recent_year = most_recent_year) %>% 
+  left_join(poly_metadata %>% filter(year == most_recent_year), by = "polyid")
 
 # Join the polygons data with the most recent abundance estimates
 survey_polygons <- survey_polygons %>% 
-  select(-stockname) %>%
-  left_join(abundance_filtered, by = "polyid") %>% 
-  mutate("survey_date" = has_been_surveyed(as.vector(survey_polygons$last_surveyed)))
+  select(-stockname, -trendpoly, -station, -distance_km, -iliamna, -glacier_name) %>%
+  left_join(abundance_most_recent, by = "polyid") %>% 
+  mutate(survey_date = ifelse(is.na(last_surveyed), 
+                              "This survey unit has not been surveyed.",
+                              paste0("This survey unit was last surveyed on ", last_surveyed))) %>%
+  filter(!is.na(abund_est))
 
-# Subset the data so that plots without abundance data are not included
-survey_polygons <- survey_polygons[!is.na(survey_polygons$abund_est), ]
-
-
-
-## Move the polygons across the dateline so the Aleutians are not separated -----------------------------------------
+## Move the polygons across the dateline so the Aleutians are not separated 
 # And calculate the midpoint of polygons to set the view of the map
 
 # Move survey polygons across dateline
@@ -148,6 +212,11 @@ stock_polygons$geometry <- (sf::st_geometry(stock_polygons) + c(360,90)) %% c(36
 mean_x = (max(survey_polygons$centroid.x) + min(survey_polygons$centroid.x)) / 2
 mean_y = (max(survey_polygons$centroid.y) + min(survey_polygons$centroid.y)) / 2
 
+
+
+##TEMPORARY FOR MAKING APP WORK ---------------------------------------------
+abundance <- calculate_abundance_trend(data_cube = data_cube, group_by_var = c('cube', 'year'), subset_type = 'all', poly_metadata = poly_metadata) %>%
+  filter(!is.na(effort))
 
 
 
@@ -530,7 +599,7 @@ server <- function(input, output, session) {
     leafletProxy("map1") %>% 
       setView(mean_x, mean_y, zoom = 4) %>% 
       clearGroup(group = "lines")
-    #c ould try to put any drawn shapes in a group and clear that group
+    #could try to put any drawn shapes in a group and clear that group
     
   })
   
@@ -538,15 +607,8 @@ server <- function(input, output, session) {
   
   # Plot for abundance
   output$plot1 <- renderHighchart({
-    
-    abund_subset <- plotted.data$values %>%
-      filter(!is.na(year)) %>%
-      group_by(year) %>% 
-      summarise("total.abund" = sum(abund_est), 
-                "low.abund" = sum(abund_b95), 
-                "high.abund" = sum(abund_t95),
-                "effort" = sum(surveyed)) 
-    
+    abund_subset <- plotted.data$values
+
     # inferno_colors <-  unique(pal(survey_polygons$abund_est))
     
     # A caption for the chart is available if we'd be interested in including that
@@ -557,8 +619,8 @@ server <- function(input, output, session) {
                labels = list(style = list(color = "#FFFFFF"))) %>%
       hc_yAxis_multiples(list(title = list(text = "# of Harbor Seals", style = list(color = "#FFFFFF", fontSize = "16px")),
                               labels = list(format = '{value}', style = list(color = "#FFFFFF")),
-                              min = min(abund_subset$low.abund),
-                              max = max(abund_subset$high.abund),
+                              min = min(abund_subset$abund_b95),
+                              max = max(abund_subset$abund_t95),
                               showFirstLabel = TRUE,
                               showLastLabel = TRUE,
                               opposite = FALSE),
@@ -578,14 +640,14 @@ server <- function(input, output, session) {
                     yAxis = 1) %>%
       hc_add_series(data = abund_subset,
                     type = "arearange",
-                    hcaes(x = year, low = low.abund, high = high.abund),
+                    hcaes(x = year, low = abund_b95, high = abund_t95),
                     color = "#E6C6B5",
                     opacity = 0.25,
                     name = "95th Percentile Confidence Interval") %>%
       hc_add_series(data = abund_subset,
                     type="line",
                     lineWidth = 4,
-                    hcaes(x = year, y = total.abund),
+                    hcaes(x = year, y = abund_est),
                     color = "#E55C30", #"#ED6925",
                     name = "Estimated Abundance") %>%
       hc_title(text = paste("Estimated Harbor Seal Abundance by Year", title.label()),
@@ -597,21 +659,15 @@ server <- function(input, output, session) {
   output$plot2 <- renderHighchart({
     
     # Could have been done at the same time as the other filter but helps isolate problems when they arise
-    trend_subset <- plotted.data$values %>% 
-      dplyr::filter(!is.na(trend_est)) %>%
-      group_by(year) %>% 
-      summarise("total.trend" = sum(trend_est), 
-                "low.trend" = sum(trend_b95), 
-                "high.trend" = sum(trend_t95),
-                "effort" = sum(surveyed))
+    trend_subset <- plotted.data$values
     
     highchart() %>%
       hc_xAxis(title = list(text = "Year", style = list(color = "#FFFFFF",  fontSize = "16px")),
                labels = list(style = list(color = "#FFFFFF"))) %>%
       hc_yAxis_multiples(list(title = list(text = "Trend", style = list(color = "#FFFFFF", fontSize = "16px")),
                               labels = list(format = '{value}', style = list(color = "#FFFFFF")),
-                              min = min(trend_subset$low.trend),
-                              max = max(trend_subset$high.trend),
+                              min = min(trend_subset$trend_b95),
+                              max = max(trend_subset$trend_t95),
                               showFirstLabel = TRUE,
                               showLastLabel = TRUE,
                               opposite = FALSE),
@@ -631,13 +687,13 @@ server <- function(input, output, session) {
                     yAxis = 1) %>%
       hc_add_series(data = trend_subset,
                     type = "arearange",
-                    hcaes(x = year, low = low.trend, high = high.trend),
+                    hcaes(x = year, low = trend_b95, high = trend_t95),
                     color = "#E6C6B5",
                     opacity = 0.25,
                     name = "95th Percentile Confidence Interval") %>%
       hc_add_series(data = trend_subset,
                     type="line",
-                    hcaes(x = year, y = total.trend),
+                    hcaes(x = year, y = trend_est),
                     color = "#E55C30",
                     name = "Trend") %>%
       hc_title(text = paste(input$num.years,"-Year Trend in Estimated Harbor Seal Abundance By Year ", title.label(), sep = ""),
