@@ -2,6 +2,7 @@
 # Original code written by Allison James
 # Code updated and maintained by Stacie Koslovsky
 
+
 ## Create functions -----------------------------------------
 
 # Function to install packages needed
@@ -20,52 +21,100 @@ load_rdata <- function(fileName){
   get(ls()[ls() != "fileName"])
 }
 
+calculate_ci <- function(subset, ci_type, group_by_ci, select_ci){
+  subset_abund_ci <- subset %>%
+    group_by_at(group_by_ci) %>%
+    arrange(abund) %>%
+    mutate(rank = sequence(n())) %>%
+    ungroup() %>%
+    filter(rank == 25 | rank == 975) %>%
+    select(!select_ci) %>%
+    unique() %>%
+    pivot_wider(names_from = rank, values_from = abund) %>%
+    rename(!!(paste0(as.name(ci_type), "_b95")) := "25",
+           !!(paste0(as.name(ci_type), "_t95")) := "975")
+}
+
 # Function to process data cube to desired output
-calculate_abundance_trend <- function(data_cube, subset_type, group_by_var, most_recent_year = NULL, poly_metadata = NULL) {
+calculate_abundance_trend <- function(data_cube, subset_type, group_by_var, most_recent_year = NULL, poly_metadata = NULL, filter = NULL) {
+  if(subset_type == "most_recent"){
+    subset <- data_cube %>%
+      filter(year == most_recent_year) 
+  }
   if(subset_type == "all"){
     subset <- data_cube
     polys <- unique(subset$polyid)
   }
-  if(subset_type == "most_recent"){
+  if(subset_type == "stock"){
     subset <- data_cube %>%
-      filter(year == most_recent_year) 
+      filter(stockname == "Aleutians") #filter)
+    polys <- unique(subset$polyid) 
+  }
+  if(subset_type == "poly_in_list"){
+    subset <- data_cube %>%
+      filter(polyid %in% filter) 
+    polys <- unique(subset$polyid) 
   }
   
   # Create summary dataset
   subset <- subset %>%
     group_by_at(group_by_var) %>%
-    summarise(abund = sum(abund))
+    summarise(abund = sum(abund)) %>%
+    ungroup()
   
   if(subset_type == "most_recent"){
-    abund_ci <- subset %>%
-      group_by(polyid, year) %>%
-      arrange(abund) %>%
-      mutate(rank = sequence(n())) %>%
-      ungroup() %>%
-      filter(rank == 25 | rank == 975) %>%
-      select(-cube, -year) 
+    subset_abund_ci <- calculate_ci(subset, ci_type = "abund", group_by_ci = c("polyid", "year"), select_ci = c("cube", "year")) 
     
     subset_abund <- subset %>%
       group_by(polyid) %>%
       summarise(abund_est = mean(abund)) %>%
-      left_join(abund_ci %>% filter(rank == 25) %>% select(polyid, abund) %>% rename(abund_b95 = abund), by = "polyid") %>%
-      left_join(abund_ci %>% filter(rank == 975) %>% select(polyid, abund) %>% rename(abund_t95 = abund), by = "polyid")
+      left_join(subset_abund_ci, by = "polyid")
   } else {
-    abund_ci <- subset %>%
-      group_by(year) %>%
-      arrange(abund) %>%
-      mutate(rank = sequence(n())) %>%
-      ungroup() %>%
-      filter(rank == 25 | rank == 975) %>%
-      select(-cube) %>%
-      unique()
+    subset_abund_ci <- calculate_ci(subset, ci_type = "abund", group_by_ci = c("year"), select_ci = c("cube")) 
+    
+    # subset_trend <- subset %>%
+    #   arrange(cube, year) %>%
+    #   mutate(trend_est1 = roll::roll_lm(x = as.matrix(rep.int(1, nrow(subset))),
+    #                                    y = as.matrix(abund), 
+    #                                    width = 1, 
+    #                                    intercept = FALSE)$coefficients) %>%
+    #   mutate(trend_est8 = roll::roll_lm(x = as.matrix(rep.int(1, nrow(subset))), #1:8, #as.matrix(year - min(subset$year)),
+    #                                     y = as.matrix(abund), 
+    #                                     #weights = 8:1,
+    #                                     width = 8, 
+    #                                     intercept = FALSE)$coefficients) %>%
+    #   mutate(trend_test = 100*(exp(trend_est8)-1))
 
     subset_abund <- subset %>%
       group_by(year) %>%
       summarise(abund_est = mean(abund)) %>%
-      left_join(abund_ci %>% filter(rank == 25) %>% select(year, abund) %>% rename(abund_b95 = abund), by = "year") %>%
-      left_join(abund_ci %>% filter(rank == 975) %>% select(year, abund) %>% rename(abund_t95 = abund), by = "year")
+      left_join(subset_abund_ci, by = "year") 
+    
+
   }
+  
+  # subset_trend <- subset %>%
+  #   arrange(cube, year) %>%
+  #   mutate(trend_est = as.numeric(0))
+  # 
+  # min_year <- min(subset_trend$year) + 7
+  # 
+  # for (i in 8:nrow(subset_trend)){
+  #   # Skip first 8 years in each group 
+  #   if(subset_trend$year[i] < min_year) next
+  #   
+  #   # Calculate trend
+  #   trend_value <- 100 * exp(coef(lm(I(log(y))~x, data.frame(x = as.matrix(1:8), y = as.matrix(subset_trend$abund[(i-7):i]))))[2] - 1)
+  #   subset_trend$trend_est[i] <- trend_value
+  #   }
+  # 
+  # test <- roll::roll_lm(
+  #   x         = as.matrix(subset$year),
+  #   y         = as.matrix(subset$abund), 
+  #   width     = 8, 
+  #   intercept = FALSE
+  # )$coefficients
+  
   
   subset_trend <- subset_abund %>%
     rename(trend_est = abund_est,
@@ -75,7 +124,7 @@ calculate_abundance_trend <- function(data_cube, subset_type, group_by_var, most
   # Get survey effort data and 
   if(subset_type == "most_recent"){
     subset_summ <- subset_abund %>%
-      left_join(subset_trend, by = c("polyid"))
+      left_join(subset_trend, by = c("polyid")) 
   } else {
     effort <- poly_metadata %>%
       filter(polyid %in% polys) %>%
@@ -123,6 +172,7 @@ get_opacity <- function(x, bins){
   return(opacity_vector)
 }
 
+
 ## Install library packages -----------------------------------------
 install_pkg("tidyverse")
 install_pkg("shiny")
@@ -137,17 +187,27 @@ install_pkg("highcharter")
 install_pkg("scales")
 install_pkg("geojsonio")
 install_pkg("sf")
+install_pkg("roll")
 
 sf::sf_use_s2(FALSE)
 
+
 ## Get and process data from GitHub -----------------------------------------
 
-# Survey polygon data
-url.poly_metadata <- "https://raw.githubusercontent.com/staciekoslovsky-noaa/CoastalPv_AbundanceApp/main/Data/geo_abundance_4shiny.csv"
+# Poly metadata
+url.poly_metadata <- "https://raw.githubusercontent.com/staciekoslovsky-noaa/CoastalPv_AbundanceApp/main/Data/tbl_effort_4shiny.csv"
 poly_metadata <- read.csv(url(url.poly_metadata)) %>%
-  filter(year != 'NULL') %>%
-  mutate(year  = as.numeric(year)) %>%
-  select(polyid, stockname, year, surveyed, last_surveyed)
+  rename(year = effort_year) %>%
+  filter(year != 'NULL' & year != 1111) %>%
+  mutate(year = as.numeric(year)) %>%
+  select(polyid, year, surveyed, last_surveyed) 
+
+last_surveyed <- poly_metadata %>%
+  select(polyid, last_surveyed) %>%
+  unique()
+
+poly_metadata <- poly_metadata %>%
+  select(polyid, year, surveyed)
 
 # Abundance data cube
 url.data_cube <- "C://smk/akpv_datacube.rda"
@@ -161,41 +221,50 @@ data_cube <- load_rdata(url.data_cube) %>%
     values_to = "abund") %>%
   mutate(cube = sub('.*\\.', '', year)) %>%
   mutate(cube = ifelse(substring(cube, 1, 1) == "X", 0, cube),
-         year = as.numeric(substring(year, 2, 5)))
+         year = as.numeric(substring(year, 2, 5))) 
 
 # Geojson file with polygons data
-url.poly <- "https://raw.githubusercontent.com/StacieKozHardy/CoastalPv_AbundanceApp/main/Data/survey_polygons.geojson"
+url.poly <- "https://raw.githubusercontent.com/staciekoslovsky-noaa/CoastalPv_AbundanceApp/main/Data/survey_polygons.geojson"
 survey_polygons <- geojson_read(url.poly, what = "sp") %>%
   sf::st_as_sf(crs = 4326) %>%
-  rename(polygon_id = id)
+  select(-stockid, -trendpoly, -station, -distance_km, -iliamna, -glacier_name, -behm_canal) %>%
+  rename(polygon_id = id) %>%
+  left_join(last_surveyed, by = "polyid")
 
 # Geojson file with the stocks
-url.stocks <- "https://raw.githubusercontent.com/StacieKozHardy/CoastalPv_AbundanceApp/main/Data/survey_stocks.geojson"
+url.stocks <- "https://raw.githubusercontent.com/staciekoslovsky-noaa/CoastalPv_AbundanceApp/main/Data/survey_stocks.geojson"
 stock_polygons <- geojson_read(url.stocks, what = "sp") %>%
   sf::st_as_sf(crs = 4326)
 
-rm(url.data_cube, url.poly, url.poly_metadata, url.stocks)
+rm(url.data_cube, url.poly, url.poly_metadata, url.stocks, last_surveyed)
 
-
-
+stocknames <- survey_polygons %>%
+  select(polyid, stockname) %>%
+  st_drop_geometry()
 
 
 ## Prepare survey_polygons and stock_polygons for map -----------------------------------------
 # Filter the data cube so that it's the most recent year while removing NA values
-most_recent_year <- 2016 #max(colnames(data_cube[[1]])) !!!NEED THIS TO WORK OFF OF max VALUE!!!
+most_recent_year <- max(data_cube$year)
 
 # Create dataset of abundance from most-recent year
 abundance_most_recent <- calculate_abundance_trend(data_cube = data_cube, group_by_var = c('polyid', 'cube', 'year'), subset_type = 'most_recent', most_recent_year = most_recent_year) %>% 
-  left_join(poly_metadata %>% filter(year == most_recent_year), by = "polyid")
+  left_join(poly_metadata %>% filter(year == most_recent_year), by = "polyid") 
 
 # Join the polygons data with the most recent abundance estimates
 survey_polygons <- survey_polygons %>% 
-  select(-stockname, -trendpoly, -station, -distance_km, -iliamna, -glacier_name) %>%
   left_join(abundance_most_recent, by = "polyid") %>% 
+  mutate(surveyed = ifelse(is.na(surveyed), 0, surveyed)) %>%
   mutate(survey_date = ifelse(is.na(last_surveyed), 
                               "This survey unit has not been surveyed.",
                               paste0("This survey unit was last surveyed on ", last_surveyed))) %>%
   filter(!is.na(abund_est))
+
+# Add stockname to data_cube (after most recent abundance estimates are generated to avoid having the field twice)
+data_cube <- data_cube %>%
+  left_join(stocknames, by = "polyid")
+
+rm(abundance_most_recent, stocknames)
 
 ## Move the polygons across the dateline so the Aleutians are not separated 
 # And calculate the midpoint of polygons to set the view of the map
@@ -213,11 +282,8 @@ mean_x = (max(survey_polygons$centroid.x) + min(survey_polygons$centroid.x)) / 2
 mean_y = (max(survey_polygons$centroid.y) + min(survey_polygons$centroid.y)) / 2
 
 
-
-##TEMPORARY FOR MAKING APP WORK ---------------------------------------------
-abundance <- calculate_abundance_trend(data_cube = data_cube, group_by_var = c('cube', 'year'), subset_type = 'all', poly_metadata = poly_metadata) %>%
-  filter(!is.na(effort))
-
+# Create default abundance dataset for app --------------------------------------
+abundance <- calculate_abundance_trend(data_cube = data_cube, group_by_var = c('cube', 'year'), subset_type = 'all', poly_metadata = poly_metadata) 
 
 
 ## Prepare information for ShinyApp -----------------------------------------
@@ -266,11 +332,11 @@ disclaimer <- "This is a prototype application. While the best efforts have been
 contact_info <- "This application was developed by Allison James as part of a summer 2022 internship, jointly sponsored by UW CICOES and NOAA Fisheries. 
   
   <br/> <br/> 
-  The application is maintained by Stacie Hardy (stacie.hardy@noaa.gov). 
+  The application is maintained by Stacie Koslovsky (stacie.koslovsky@noaa.gov). 
   
   <br/> <br/> 
   For questions regarding the harbor seal aerial survey project, contact Josh London (josh.london@noaa.gov), and 
-  for questions regarding the statistical methods used to calculate the harobr seal abundance estimates, contact Jay Ver Hoef (jay.verhoef@noaa.gov)."
+  for questions regarding the statistical methods used to calculate the harbor seal abundance estimates, contact Jay Ver Hoef (jay.verhoef@noaa.gov)."
 
 data_access <- paste("The data we are using to power this application are publicly available for viewing and download. Links to each of these datasets are below: <br/>
   
@@ -336,7 +402,7 @@ ui <- fluidPage(theme = shinytheme("superhero"),
                 (selectInput(inputId = "stock.select",
                              label = div(style = "font-size:16px", "Select Stock (if applicable)"),
                              choices = c("All", survey_polygons$stockname),
-                             multiple = TRUE,
+                             multiple = FALSE,
                              selected = "All")),
                 br(),
                 (actionBttn(inputId = "update", 
@@ -419,8 +485,8 @@ server <- function(input, output, session) {
       addPolygons(data = survey_polygons,
                   layerId = ~polyid,
                   group = "stockname",
-                  popup = ~htmltools::htmlEscape(paste("You have selected the following survey unit: ", survey_polygons$polyid, 
-                                                       ". It is found in the ", survey_polygons$stockname, 
+                  popup = ~htmltools::htmlEscape(paste("You have selected survey unit ", survey_polygons$polyid, 
+                                                       ", found in the ", survey_polygons$stockname, 
                                                        " stock. In ", most_recent_year, 
                                                        ", the harbor seal abundance estimate for this survey unit was ", 
                                                        round(survey_polygons$abund_est, 2), " with a confidence interval of ", 
@@ -473,10 +539,15 @@ server <- function(input, output, session) {
     # Process data if "stock" selected ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     
     if(input$filter == "Stock"){
-      
       # Update the dataset to be filtered by the selected stock
       if(input$stock.select != "All"){
-        plotted.data$values <- abundance %>% filter(stockname == input$stock.select)
+        stock_filter <- input$stock.select
+        
+        plotted.data$values <- calculate_abundance_trend(data_cube = data_cube, group_by_var = c('cube', 'year'), subset_type = 'stock', poly_metadata = poly_metadata, filter = stock_filter)
+        
+        currently_plotted_ids <- survey_polygons %>%
+          filter(stockname == stock_filter)
+        
         title.label(paste("in the", input$stock.select, "Stock"))
       }
       else {
@@ -496,22 +567,23 @@ server <- function(input, output, session) {
         title.label("in All Stocks")
       }
       else {
-        # Drawn polygon's attributes
+        # Select based on drawn polygon
         drawn <- input$map1_draw_new_feature
         polygon_coordinates <- do.call(rbind, lapply(drawn$geometry$coordinates[[1]], function(x){c(x[[1]][1],x[[2]][1])}))
-
         drawn_polygon <- data.frame(lat = polygon_coordinates[, 2], long = polygon_coordinates[, 1]) %>%
           st_as_sf(coords = c("long", "lat"), crs = 4326) %>%
           summarise(geometry = st_combine(geometry)) %>%
           st_cast("POLYGON")
-        print(drawn_polygon)
-        #drawn_polygon$geometry <- (sf::st_geometry(drawn_polygon) + c(360,90)) %% c(360) - c(0,90)
-        #print(drawn_polygon)
-  
         found_in_bounds <- st_join(sf::st_set_crs(drawn_polygon, 4326), sf::st_set_crs(survey_polygons, 4326))
         
+        poly_filter <- found_in_bounds$polyid
+        
         # Subset data by polyids within polygon
-        plotted.data$values <- subset(abundance, abundance$polyid %in% found_in_bounds$polyid)
+        plotted.data$values <- calculate_abundance_trend(data_cube = data_cube, group_by_var = c('cube', 'year'), subset_type = 'poly_in_list', poly_metadata = poly_metadata, filter = poly_filter) 
+        
+        currently_plotted_ids <- survey_polygons %>%
+          filter(polyid %in% poly_filter) 
+        
         title.label("in the Selected Survey Units")
       }
       zoom.to.stock(TRUE)
@@ -527,7 +599,7 @@ server <- function(input, output, session) {
         title.label("in All Stocks")
       }
       else {
-        # Drawn circle's attributes
+        # Select based on drawn circle
         drawn <- input$map1_draw_new_feature
         
         drawn_circle <- data.frame(lat = drawn$geometry$coordinates[[2]], long = drawn$geometry$coordinates[[1]]) %>%
@@ -536,36 +608,46 @@ server <- function(input, output, session) {
           sf::st_buffer(dist = drawn$properties$radius) %>%
           sf::st_transform(4326) 
         drawn_circle$geometry <- (sf::st_geometry(drawn_circle) + c(360,90)) %% c(360) - c(0,90)
-
-        found_in_bounds <- st_join(sf::st_set_crs(drawn_circle, 4326), sf::st_set_crs(survey_polygons, 4326))
-        print(found_in_bounds)
         
-        # Subset data by polyids within polygon
-        plotted.data$values <- subset(abundance, abundance$polyid %in% found_in_bounds$polyid)
+        found_in_bounds <- st_join(sf::st_set_crs(drawn_circle, 4326), sf::st_set_crs(survey_polygons, 4326))
+        
+        circle_filter <- found_in_bounds$polyid
+        
+        # Calculate custom abundance estimates for app
+        plotted.data$values <- calculate_abundance_trend(data_cube = data_cube, group_by_var = c('cube', 'year'), subset_type = 'poly_in_list', poly_metadata = poly_metadata, filter = circle_filter) 
+        
+        currently_plotted_ids <- survey_polygons %>%
+          filter(polyid %in% circle_filter) 
+        
         title.label("Within the Given Radius")
       }
       zoom.to.stock(TRUE)
     }
+    
+    # Process data if "survey unit" selected ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    
     else if (input$filter == "Survey Unit"){
       if(is.null(input$map1_shape_click$id)){
         plotted.data$values <- abundance
         title.label("in All Stocks")
       }
       else {
-        plotted.data$values <- subset(abundance, abundance$polyid == input$map1_shape_click$id)
+        singlePoly_filter <- input$map1_shape_click$id
         
-        title.label(paste("in Survey Unit:", input$map1_shape_click$id))
+        # Calculate custom abundance estimates for app
+        plotted.data$values <- calculate_abundance_trend(data_cube = data_cube, group_by_var = c('cube', 'year'), subset_type = 'poly_in_list', poly_metadata = poly_metadata, filter = singlePoly_filter)
+        
+        currently_plotted_ids <- survey_polygons %>%
+          filter(polyid %in% singlePoly_filter) 
+        
+        title.label(paste("in Survey Unit:", singlePoly_filter))
       }
       zoom.to.stock(TRUE)
     }
     
-    #survey_polygons subset where the ids match the ones in plotted.data$values
-    
+    # Map survey_polygons where the ids match the ones in plotted.data$values
     leafletProxy("map1") %>% 
       clearGroup(group = "lines")
-    
-    currently_plotted_ids <- subset(survey_polygons, survey_polygons$polyid %in% plotted.data$values$polyid)
-    
     
     leafletProxy("map1") %>% 
       addPolylines(data = currently_plotted_ids,
@@ -577,29 +659,24 @@ server <- function(input, output, session) {
                    group = "lines")
     
     if(zoom.to.stock()){
-      
       View(currently_plotted_ids)
       
       subset_x_centroid <- mean(currently_plotted_ids$centroid.x)
       subset_y_centroid <- mean(currently_plotted_ids$centroid.y)
       
-      
       leafletProxy("map1") %>% 
         setView(subset_x_centroid, subset_y_centroid, zoom = 6)
     }
-    
-    
   })
   
   observeEvent(input$default,{
     
     plotted.data$values <- abundance
     title.label("in All Stocks")
-    # map.view$values <- c(mean_x, mean_y)
+
     leafletProxy("map1") %>% 
       setView(mean_x, mean_y, zoom = 4) %>% 
       clearGroup(group = "lines")
-    #could try to put any drawn shapes in a group and clear that group
     
   })
   
