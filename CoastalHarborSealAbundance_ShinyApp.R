@@ -1,4 +1,4 @@
-# Coastal Harbor Seal Abundance: Shiny App
+# Harbor Seal Abundance: Shiny App
 # Original code written by Allison James
 # Code updated and maintained by Stacie Koslovsky
 
@@ -37,25 +37,41 @@ calculate_ci <- function(subset, ci_type, group_by_ci, select_ci){
 
 # Function to process data cube to desired output
 calculate_abundance_trend <- function(data_cube, subset_type, group_by_var, most_recent_year = NULL, poly_metadata = NULL, filter = NULL) {
+  # Filter data for the abundance/trend estimates
   if(subset_type == "most_recent"){
     subset <- data_cube %>%
-      filter(year == most_recent_year) 
+      filter(year == most_recent_year)
   }
   if(subset_type == "all"){
     subset <- data_cube
-    polys <- unique(subset$polyid)
   }
   if(subset_type == "stock"){
     subset <- data_cube %>%
-      filter(stockname == "Aleutians") #filter)
-    polys <- unique(subset$polyid) 
+      filter(stockname == filter)
   }
   if(subset_type == "poly_in_list"){
     subset <- data_cube %>%
       filter(polyid %in% filter) 
-    polys <- unique(subset$polyid) 
   }
   
+  # Create list of polys being processed based on the subset_type
+  polys <- unique(subset$polyid)
+  
+  # Create subset of poly_metadata based on the data selected above (for creating surveyed abundance estimate for each year)
+  if(subset_type != "most_recent") {
+    subset_effort <- poly_metadata %>%
+      filter(polyid %in% polys)
+    
+    subset_abund_effort <- subset %>%
+      inner_join(subset_effort, by = c("polyid", "year")) %>%
+      group_by_at(group_by_var) %>%
+      summarise(abund = sum(abund)) %>%
+      ungroup() %>%
+      group_by(year) %>%
+      summarise(abund_surveyed = mean(abund))
+  }
+
+
   # Create summary dataset
   subset <- subset %>%
     group_by_at(group_by_var) %>%
@@ -69,30 +85,32 @@ calculate_abundance_trend <- function(data_cube, subset_type, group_by_var, most
       group_by(polyid) %>%
       summarise(abund_est = mean(abund)) %>%
       left_join(subset_abund_ci, by = "polyid")
+
+    # Add trend?
   } else {
     subset_abund_ci <- calculate_ci(subset, ci_type = "abund", group_by_ci = c("year"), select_ci = c("cube")) 
     
-    # subset_trend <- subset %>%
-    #   arrange(cube, year) %>%
-    #   mutate(trend_est1 = roll::roll_lm(x = as.matrix(rep.int(1, nrow(subset))),
-    #                                    y = as.matrix(abund), 
-    #                                    width = 1, 
-    #                                    intercept = FALSE)$coefficients) %>%
-    #   mutate(trend_est8 = roll::roll_lm(x = as.matrix(rep.int(1, nrow(subset))), #1:8, #as.matrix(year - min(subset$year)),
-    #                                     y = as.matrix(abund), 
-    #                                     #weights = 8:1,
-    #                                     width = 8, 
-    #                                     intercept = FALSE)$coefficients) %>%
-    #   mutate(trend_test = 100*(exp(trend_est8)-1))
-
     subset_abund <- subset %>%
       group_by(year) %>%
       summarise(abund_est = mean(abund)) %>%
       left_join(subset_abund_ci, by = "year") 
     
-
+    # Add trend?
   }
   
+  # subset_trend <- subset %>%
+  #   arrange(cube, year) %>%
+  #   mutate(trend_est1 = roll::roll_lm(x = as.matrix(rep.int(1, nrow(subset))),
+  #                                    y = as.matrix(abund), 
+  #                                    width = 1, 
+  #                                    intercept = FALSE)$coefficients) %>%
+  #   mutate(trend_est8 = roll::roll_lm(x = as.matrix(rep.int(1, nrow(subset))), #1:8, #as.matrix(year - min(subset$year)),
+  #                                     y = as.matrix(abund), 
+  #                                     #weights = 8:1,
+  #                                     width = 8, 
+  #                                     intercept = FALSE)$coefficients) %>%
+  #   mutate(trend_test = 100*(exp(trend_est8)-1))
+  #
   # subset_trend <- subset %>%
   #   arrange(cube, year) %>%
   #   mutate(trend_est = as.numeric(0))
@@ -115,25 +133,22 @@ calculate_abundance_trend <- function(data_cube, subset_type, group_by_var, most
   #   intercept = FALSE
   # )$coefficients
   
-  
+  # Temporary fix for trend data...
   subset_trend <- subset_abund %>%
     rename(trend_est = abund_est,
            trend_b95 = abund_b95,
            trend_t95 = abund_t95)
   
-  # Get survey effort data and 
+  # Get survey effort data
   if(subset_type == "most_recent"){
     subset_summ <- subset_abund %>%
       left_join(subset_trend, by = c("polyid")) 
   } else {
-    effort <- poly_metadata %>%
-      filter(polyid %in% polys) %>%
-      group_by(year) %>%
-      summarise(effort = sum(surveyed))
-    
     subset_summ <- subset_abund %>%
       left_join(subset_trend, by = "year") %>%
-      left_join(effort, by = "year")
+      left_join(subset_abund_effort, by = c("year")) %>%
+      mutate(abund_surveyed = ifelse(is.na(abund_surveyed), 0, abund_surveyed)) %>%
+      mutate(effort = round(abund_surveyed * 100 / abund_est, 2))
   }
   
   return(subset_summ)
@@ -257,7 +272,7 @@ survey_polygons <- survey_polygons %>%
   mutate(surveyed = ifelse(is.na(surveyed), 0, surveyed)) %>%
   mutate(survey_date = ifelse(is.na(last_surveyed), 
                               "This survey unit has not been surveyed.",
-                              paste0("This survey unit was last surveyed on ", last_surveyed))) %>%
+                              paste0("This survey unit was last surveyed on ", last_surveyed, "."))) %>%
   filter(!is.na(abund_est))
 
 # Add stockname to data_cube (after most recent abundance estimates are generated to avoid having the field twice)
@@ -380,13 +395,9 @@ ui <- fluidPage(theme = shinytheme("superhero"),
             # Column with the inputs
             column(3, tabsetPanel(
               tabPanel("Data Controls", verticalLayout(
-                selectInput(inputId = "trend.input.data",
-                            label = div(style = "font-size:16px", "Input Data for Trend"),
-                            choices = c("Abundance", "Log(Abundance)"),
-                            selected = "Abundance"),
                 selectInput(inputId = "num.years",
                             label = div(style = "font-size:16px", "Number of Years for Trend"),
-                            choices = c(5, 8, 10, 15), #can be changed later
+                            choices = c(3, 5, 8),
                             selected= 8),
                 (radioGroupButtons(inputId = "filter",
                                    label = div(style = "font-size:16px", "Filter Data By:"),
@@ -424,7 +435,7 @@ ui <- fluidPage(theme = shinytheme("superhero"),
             # Column with the plots (under different tabs)
             column(9, tabsetPanel(
               tabPanel("Abundance", highchartOutput(outputId = "plot1")),
-              tabPanel("Trend", highchartOutput(outputId = "plot2")),
+              # tabPanel("Trend", highchartOutput(outputId = "plot2")),
               type = "pills" # Selected tabs use the background fill color (which for some reason is orange)
             )
             )
@@ -527,15 +538,7 @@ server <- function(input, output, session) {
   
   #### Update reactive dataset when button is pressed 
   observeEvent(input$update, {
-    # Code for changing dataset for trend: (have to repeat in each if/else block)
-    
-    #if (input$trend.input.data == Abundance){
-    #trend.data$values <- abundance %>% filter(stockname == input$stock.select)
-    #}
-    # else{
-    #   trend.data$values <- otherdataset %>% filter(stockname == input$stock.select
-    # }
-    
+
     # Process data if "stock" selected ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     
     if(input$filter == "Stock"){
@@ -553,6 +556,9 @@ server <- function(input, output, session) {
       else {
         plotted.data$values <- abundance
         title.label("in All Stocks")
+        
+        leafletProxy("map1") %>% 
+          clearGroup()
       }
       zoom.to.stock(TRUE)
     }
@@ -701,10 +707,10 @@ server <- function(input, output, session) {
                               showFirstLabel = TRUE,
                               showLastLabel = TRUE,
                               opposite = FALSE),
-                         list(title = list(text = "# of Survey Units Flown", style = list(color = "#FFFFFF", fontSize = "16px")),
+                         list(title = list(text = "% of Harbor Seals Surveyed", style = list(color = "#FFFFFF", fontSize = "16px")),
                               min = 0,
-                              max = max(abund_subset$effort),
-                              labels = list(format = "{value}", style = list(color = "#FFFFFF")),
+                              max = 100,
+                              labels = list(format = "{value}%", style = list(color = "#FFFFFF")),
                               showLastLabel = TRUE, 
                               opposite = TRUE)) %>%
       hc_plotOptions(column = list(stacking = "normal")) %>%
@@ -712,18 +718,18 @@ server <- function(input, output, session) {
                     type = "column",
                     hcaes(x = year, y = effort),
                     color = "#855278",
-                    name = "Survey Effort",
-                    opacity = 0.8,
+                    name = "% of Harbor Seals Surveyed",
+                    opacity = 0.5,
                     yAxis = 1) %>%
       hc_add_series(data = abund_subset,
                     type = "arearange",
                     hcaes(x = year, low = abund_b95, high = abund_t95),
                     color = "#E6C6B5",
-                    opacity = 0.25,
+                    opacity = 0.4,
                     name = "95th Percentile Confidence Interval") %>%
       hc_add_series(data = abund_subset,
                     type="line",
-                    lineWidth = 4,
+                    lineWidth = 5,
                     hcaes(x = year, y = abund_est),
                     color = "#E55C30", #"#ED6925",
                     name = "Estimated Abundance") %>%
@@ -732,52 +738,52 @@ server <- function(input, output, session) {
       hc_legend(itemStyle = list(color = "#FFFFFF"))
   })
   
-  #Plot for trend
-  output$plot2 <- renderHighchart({
-    
-    # Could have been done at the same time as the other filter but helps isolate problems when they arise
-    trend_subset <- plotted.data$values
-    
-    highchart() %>%
-      hc_xAxis(title = list(text = "Year", style = list(color = "#FFFFFF",  fontSize = "16px")),
-               labels = list(style = list(color = "#FFFFFF"))) %>%
-      hc_yAxis_multiples(list(title = list(text = "Trend", style = list(color = "#FFFFFF", fontSize = "16px")),
-                              labels = list(format = '{value}', style = list(color = "#FFFFFF")),
-                              min = min(trend_subset$trend_b95),
-                              max = max(trend_subset$trend_t95),
-                              showFirstLabel = TRUE,
-                              showLastLabel = TRUE,
-                              opposite = FALSE),
-                         list(title = list(text = "# of Survey Units Flown", style = list(color = "#FFFFFF", fontSize = "16px")),
-                              min = 0,
-                              max = max(trend_subset$effort),
-                              labels = list(format = "{value}", style = list(color = "#FFFFFF")),
-                              showLastLabel = TRUE, 
-                              opposite = TRUE)) %>%
-      hc_plotOptions(column = list(stacking = "normal")) %>%
-      hc_add_series(data = trend_subset,
-                    type = "column",
-                    hcaes(x = year, y = effort),
-                    color = "#855278",
-                    name = "Survey Effort",
-                    opacity = 0.8,
-                    yAxis = 1) %>%
-      hc_add_series(data = trend_subset,
-                    type = "arearange",
-                    hcaes(x = year, low = trend_b95, high = trend_t95),
-                    color = "#E6C6B5",
-                    opacity = 0.25,
-                    name = "95th Percentile Confidence Interval") %>%
-      hc_add_series(data = trend_subset,
-                    type="line",
-                    hcaes(x = year, y = trend_est),
-                    color = "#E55C30",
-                    name = "Trend") %>%
-      hc_title(text = paste(input$num.years,"-Year Trend in Estimated Harbor Seal Abundance By Year ", title.label(), sep = ""),
-               style = list(color = "#FFFFFF")) %>% 
-      hc_legend(itemStyle = list(color = "#FFFFFF"))
-    
-  })
+  # #Plot for trend
+  # output$plot2 <- renderHighchart({
+  #   
+  #   # Could have been done at the same time as the other filter but helps isolate problems when they arise
+  #   trend_subset <- plotted.data$values
+  #   
+  #   highchart() %>%
+  #     hc_xAxis(title = list(text = "Year", style = list(color = "#FFFFFF",  fontSize = "16px")),
+  #              labels = list(style = list(color = "#FFFFFF"))) %>%
+  #     hc_yAxis_multiples(list(title = list(text = "Trend", style = list(color = "#FFFFFF", fontSize = "16px")),
+  #                             labels = list(format = '{value}', style = list(color = "#FFFFFF")),
+  #                             min = min(trend_subset$trend_b95),
+  #                             max = max(trend_subset$trend_t95),
+  #                             showFirstLabel = TRUE,
+  #                             showLastLabel = TRUE,
+  #                             opposite = FALSE),
+  #                        list(title = list(text = "# of Survey Units Flown", style = list(color = "#FFFFFF", fontSize = "16px")),
+  #                             min = 0,
+  #                             max = max(trend_subset$effort),
+  #                             labels = list(format = "{value}", style = list(color = "#FFFFFF")),
+  #                             showLastLabel = TRUE, 
+  #                             opposite = TRUE)) %>%
+  #     hc_plotOptions(column = list(stacking = "normal")) %>%
+  #     hc_add_series(data = trend_subset,
+  #                   type = "column",
+  #                   hcaes(x = year, y = effort),
+  #                   color = "#855278",
+  #                   name = "Survey Effort",
+  #                   opacity = 0.8,
+  #                   yAxis = 1) %>%
+  #     hc_add_series(data = trend_subset,
+  #                   type = "arearange",
+  #                   hcaes(x = year, low = trend_b95, high = trend_t95),
+  #                   color = "#E6C6B5",
+  #                   opacity = 0.25,
+  #                   name = "95th Percentile Confidence Interval") %>%
+  #     hc_add_series(data = trend_subset,
+  #                   type="line",
+  #                   hcaes(x = year, y = trend_est),
+  #                   color = "#E55C30",
+  #                   name = "Trend") %>%
+  #     hc_title(text = paste(input$num.years,"-Year Trend in Estimated Harbor Seal Abundance By Year ", title.label(), sep = ""),
+  #              style = list(color = "#FFFFFF")) %>% 
+  #     hc_legend(itemStyle = list(color = "#FFFFFF"))
+  #   
+  # })
 }
 
 ## Run the application -----------------------------------------
