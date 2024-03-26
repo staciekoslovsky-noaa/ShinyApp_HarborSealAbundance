@@ -257,7 +257,6 @@ stocknames <- survey_polygons %>%
   select(polyid, stockname) %>%
   st_drop_geometry()
 
-
 ## Prepare survey_polygons and stock_polygons for map -----------------------------------------
 # Filter the data cube so that it's the most recent year while removing NA values
 most_recent_year <- max(data_cube$year)
@@ -412,7 +411,7 @@ ui <- fluidPage(theme = shinytheme("superhero"),
                 br(),
                 (selectInput(inputId = "stock.select",
                              label = div(style = "font-size:16px", "Select Stock (if applicable)"),
-                             choices = c("All", survey_polygons$stockname),
+                             choices = c("All", sort(survey_polygons$stockname)),
                              multiple = FALSE,
                              selected = "All")),
                 br(),
@@ -538,9 +537,8 @@ server <- function(input, output, session) {
   
   #### Update reactive dataset when button is pressed 
   observeEvent(input$update, {
-
-    # Process data if "stock" selected ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     
+    # Process data if "stock" selected ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     if(input$filter == "Stock"){
       # Update the dataset to be filtered by the selected stock
       if(input$stock.select != "All"){
@@ -554,21 +552,19 @@ server <- function(input, output, session) {
         title.label(paste("in the", input$stock.select, "Stock"))
       }
       else {
+        #currently_plotted_ids <- survey_polygons
         plotted.data$values <- abundance
         title.label("in All Stocks")
-        
-        leafletProxy("map1") %>% 
-          clearGroup()
       }
       zoom.to.stock(TRUE)
     }
     
     # Process data if "polygon" selected ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    
     else if(input$filter == "Polygon"){
       
-      # If there is no drawn shape, revert to default data (otherwise there is a fatal error and the r session is aborted)
+      # If there is no drawn shape, revert to default data (otherwise there is a fatal error and the R session is aborted)
       if(is.null(input$map1_draw_new_feature) || (input$map1_draw_new_feature$properties$feature_type == "circle")){
+        #currently_plotted_ids <- survey_polygons
         plotted.data$values <- abundance
         title.label("in All Stocks")
       }
@@ -596,11 +592,11 @@ server <- function(input, output, session) {
     }
     
     # Process data if "circle" selected ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    
     else if(input$filter == "Circle"){
       
       # If there is no drawn circle, revert to default data (otherwise there is a fatal error and the r session is aborted)
       if(is.null(input$map1_draw_new_feature) || (input$map1_draw_new_feature$properties$feature_type != "circle")){
+        #currently_plotted_ids <- survey_polygons
         plotted.data$values <- abundance
         title.label("in All Stocks")
       }
@@ -631,9 +627,9 @@ server <- function(input, output, session) {
     }
     
     # Process data if "survey unit" selected ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    
     else if (input$filter == "Survey Unit"){
       if(is.null(input$map1_shape_click$id)){
+        #currently_plotted_ids <- survey_polygons
         plotted.data$values <- abundance
         title.label("in All Stocks")
       }
@@ -655,23 +651,30 @@ server <- function(input, output, session) {
     leafletProxy("map1") %>% 
       clearGroup(group = "lines")
     
-    leafletProxy("map1") %>% 
-      addPolylines(data = currently_plotted_ids,
-                   fillOpacity = 0,
-                   opacity = 0.4,
-                   color = "#59FAFC",
-                   weight = 3,
-                   #layerId = ~polyid
-                   group = "lines")
+    if (exists("currently_plotted_ids") == TRUE){
+      leafletProxy("map1") %>% 
+        addPolylines(data = currently_plotted_ids,
+                     fillOpacity = 0,
+                     opacity = 0.4,
+                     color = "#59FAFC",
+                     weight = 3,
+                     #layerId = ~polyid
+                     group = "lines")
+    }
+
     
     if(zoom.to.stock()){
-      View(currently_plotted_ids)
-      
-      subset_x_centroid <- mean(currently_plotted_ids$centroid.x)
-      subset_y_centroid <- mean(currently_plotted_ids$centroid.y)
-      
-      leafletProxy("map1") %>% 
-        setView(subset_x_centroid, subset_y_centroid, zoom = 6)
+      if (exists("currently_plotted_ids") == TRUE){
+        View(currently_plotted_ids)
+        
+        subset_x_centroid <- mean(currently_plotted_ids$centroid.x)
+        subset_y_centroid <- mean(currently_plotted_ids$centroid.y)
+        
+        leafletProxy("map1") %>% 
+          setView(subset_x_centroid, subset_y_centroid, zoom = 6)
+      } else
+        leafletProxy("map1") %>% 
+          setView(lng = map.view$values[1], lat = map.view$values[2], zoom = 4) 
     }
   })
   
