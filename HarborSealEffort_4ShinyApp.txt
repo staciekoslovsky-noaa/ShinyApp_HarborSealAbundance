@@ -1,0 +1,67 @@
+WITH effort AS (
+	SELECT polyid, survey_dt::date AS survey_date
+	FROM surv_pv_cst.archive_poly_counts_2003
+	WHERE survey_dt IS NOT NULL 
+	UNION
+	SELECT polyid, survey_dt::date AS survey_date
+	FROM surv_pv_cst.archive_poly_counts_9697
+	WHERE survey_dt IS NOT NULL 
+	UNION
+	SELECT polyid, survey_dt::date AS survey_date
+	FROM surv_pv_cst.archive_poly_counts_9802
+	WHERE survey_dt IS NOT NULL 
+	UNION
+	SELECT polyid, survey_dt::date AS survey_date
+	FROM surv_pv_cst.archive_poly_counts_adfg 
+	WHERE survey_dt IS NOT NULL 
+	UNION
+	SELECT polyid, survey_dt_gmt::date AS survey_date
+	FROM surv_pv_gla.summ_count_by_polyid_4analysis_glacial
+	UNION
+	SELECT polyid, survey_dt::date AS survey_date
+	FROM surv_pv_cst.archive_poly_counts_pribs
+	WHERE effort_type_lku = 'FS' OR effort_type_lku = 'FR'
+	AND survey_dt IS NOT NULL 
+	UNION 
+	SELECT polyid, survey_dt::date AS survey_date
+	FROM surv_pv_cst.tbl_effort
+	WHERE effort_type_lku = 'FS' OR effort_type_lku = 'FR' OR effort_type_lku = 'LS' OR effort_type_lku = 'LR'
+	AND survey_dt IS NOT NULL), -- 20380 individual effort records
+last_surveyed AS (
+	SELECT polyid, max(survey_date) as last_surveyed
+	FROM effort
+	GROUP BY polyid
+),
+data AS (
+SELECT DISTINCT p.polyid, p.stockname, date_part('year'::text, e.survey_date) AS effort_year, 1 as surveyed, l.last_surveyed
+FROM surv_pv_cst.geo_polys p
+JOIN effort e USING (polyid)
+JOIN last_surveyed l USING (polyid) 
+ORDER BY polyid, effort_year -- 6720 unique effort years
+)
+SELECT row_number() OVER (ORDER BY polyid, effort_year) AS id, d.*
+FROM data d
+
+
+
+
+
+
+
+
+--OLD QUERY
+SELECT row_number() OVER (ORDER BY geo_polys.polyid, e.effort_year) AS id,
+	geo_polys.polyid,
+	geo_polys.stockname,
+	e.effort_year,
+	1 AS surveyed,
+	a.last_surveyed
+FROM surv_pv_cst.geo_polys
+JOIN ( SELECT DISTINCT tbl_effort.polyid,
+	max(tbl_effort.survey_dt::date) AS last_surveyed
+	FROM surv_pv_cst.tbl_effort
+	GROUP BY tbl_effort.polyid) a USING (polyid)
+JOIN ( SELECT DISTINCT tbl_effort.polyid,
+	date_part('year'::text, tbl_effort.survey_dt) AS effort_year
+	FROM surv_pv_cst.tbl_effort
+	WHERE tbl_effort.effort_type_lku::text <> 'NA'::text) e(polyid_1, effort_year) ON e.polyid_1::text = geo_polys.polyid::text;
