@@ -16,10 +16,10 @@ con <- RPostgreSQL::dbConnect(PostgreSQL(),
                               user = Sys.getenv("pep_admin"), 
                               password =  Sys.getenv("admin_pw"))
 
-# CREATE stock_polygons ~~~~~~~~~~~~~~~~~~~
-stock_polygons <- sf::st_read(con, query = "SELECT * FROM stock.geo_dist_pv", geometry_column = "geom") %>%
-# EXPORT stock_polygons
-geojsonio::geojson_write(stock_polygons, geometry = "polygon", file = "survey_stocks.geojson")
+# # CREATE stock_polygons ~~~~~~~~~~~~~~~~~~~ EXPORT IS NOT WORKING CORRECTLY....
+# stock_polygons <- sf::st_read(con, query = "SELECT * FROM stock.geo_dist_pv", geometry_column = "geom") 
+# # EXPORT stock_polygons
+# geojsonio::geojson_write(stock_polygons, geometry = "polygon", file = "survey_stocks.geojson")
 
 # CREATE haulout ~~~~~~~~~~~~~~~~~~~
 haulout <- sf::st_read(con, query = "SELECT * FROM surv_pv_cst.geo_haulout_20220414", geometry_column = "geom") %>%
