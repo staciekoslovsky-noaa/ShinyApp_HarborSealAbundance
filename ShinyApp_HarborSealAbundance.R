@@ -50,9 +50,30 @@ url.survey_polygons <- "C://smk/4app/survey_polygons.geojson"
 survey_polygons <- geojsonio::geojson_read(url.survey_polygons, what = "sp") %>%
   sf::st_as_sf(crs = 4326)
 
+# Trend data
+url.trend_linear_all <- "C://smk/4app/trend_linear_all.rda"
+trend_linear_all <- load_rdata(url.trend_linear_all)
+
+url.trend_linear_stock <- "C://smk/4app/trend_linear_stock.rda"
+trend_linear_stock <- load_rdata(url.trend_linear_stock)
+
+url.trend_linear_polyid <- "C://smk/4app/trend_linear_polyid.rda"
+trend_linear_polyid <- load_rdata(url.trend_linear_polyid)
+
+url.trend_prop_all <- "C://smk/4app/trend_prop_all.rda"
+trend_prop_all <- load_rdata(url.trend_prop_all)
+
+url.trend_prop_stock <- "C://smk/4app/trend_prop_stock.rda"
+trend_prop_stock <- load_rdata(url.trend_prop_stock)
+
+url.trend_prop_polyid <- "C://smk/4app/trend_prop_polyid.rda"
+trend_prop_polyid <- load_rdata(url.trend_prop_polyid)
 
 
-rm(url.poly_metadata, url.last_surveyed, url.data_cube, url.survey_polygons, url.stocks, url.haulout)
+
+rm(url.poly_metadata, url.last_surveyed, url.data_cube, url.survey_polygons, url.stocks, url.haulout,
+   url.trend_linear_all, url.trend_linear_stock, url.trend_linear_polyid,
+   url.trend_prop_all, url.trend_prop_stock, url.trend_prop_polyid)
 
 ## Prepare survey_polygons and stock_polygons for map -----------------------------------------
 # Get most_recent_year for data
@@ -75,9 +96,16 @@ mean_x = (max(survey_polygons$centroid.x) + min(survey_polygons$centroid.x)) / 2
 mean_y = (max(survey_polygons$centroid.y) + min(survey_polygons$centroid.y)) / 2
 
 
-# Create default abundance dataset for app --------------------------------------
+# Create default abundance and trend datasets for app --------------------------------------
 abundance <- calculate_abundance(data_cube = data_cube, group_by_var = c('cube', 'year'), subset_type = 'all', poly_metadata = poly_metadata) 
 
+trend <- 
+  (trend_linear_all %>% mutate(identifier = "all") %>% mutate(trend_type = "linear_all")) %>%
+  rbind(trend_linear_stock %>% rename(identifier = stockname) %>% mutate(trend_type = "linear_stock")) %>%
+  rbind(trend_linear_polyid %>% rename(identifier = polyid) %>% mutate(trend_type = "linear_polyid")) %>%
+  rbind(trend_prop_all %>% mutate(identifier = "all") %>% mutate(trend_type = "prop_all")) %>%
+  rbind(trend_prop_stock %>% rename(identifier = stockname) %>% mutate(trend_type = "prop_stock")) %>%
+  rbind(trend_prop_polyid %>% rename(identifier = polyid) %>% mutate(trend_type = "prop_polyid"))
 
 ## Prepare information for ShinyApp -----------------------------------------
 
@@ -177,6 +205,17 @@ ui <- fluidPage(theme = shinytheme("superhero"),
                 #             label = div(style = "font-size:16px", "Number of Years for Trend"),
                 #             choices = c(3, 5, 8),
                 #             selected= 8),
+                (radioGroupButtons(inputId = "trend.type",
+                                   label = div(style = "font-size:16px", "Trend Type:"),
+                                   choices = c("Linear", "Proportional"),
+                                   selected = "Linear",
+                                   direction = "vertical",
+                                   status = "danger",
+                                   individual = TRUE,
+                                   size = "sm",
+                                   checkIcon = list(yes = (icon("ok",lib = "glyphicon")),
+                                                    no = icon("remove", lib = "glyphicon")))),
+                br(),
                 (radioGroupButtons(inputId = "filter",
                                    label = div(style = "font-size:16px", "Filter Data By:"),
                                    choices = c("Stock", "Survey Unit", "Polygon", "Circle"),
@@ -207,13 +246,12 @@ ui <- fluidPage(theme = shinytheme("superhero"),
                             color = "warning")))),
               tabPanel(title = "Instructions", div(style = 'overflow-y:scroll;height:400px', HTML(instructions))),
               type = "pills" # Selected tabs use the background fill color (which for some reason is orange)
-              
             )),
             
             # Column with the plots (under different tabs)
             column(9, tabsetPanel(
               tabPanel("Abundance", highchartOutput(outputId = "plot1")),
-              # tabPanel("Trend", highchartOutput(outputId = "plot2")),
+              tabPanel("Trend", highchartOutput(outputId = "plot2")),
               type = "pills" # Selected tabs use the background fill color (which for some reason is orange)
             )
             )
@@ -223,11 +261,10 @@ ui <- fluidPage(theme = shinytheme("superhero"),
 ## Define server logic -----------------------------------------
 server <- function(input, output, session) {
   
-  #map starts off at center, map.view represents current view
+  # Map starts off at center, map.view represents current view
   map.view <- reactiveValues(values = c(mean_x, mean_y))
   
-  
-  ####Generate Leaflet map and polygons####
+  ## Generate Leaflet map and polygons ##
   output$map1 <- renderLeaflet({
     
     abund_bins <- c(0, 10, 100, 250, 500, 1000, 2500, 5000, 12000) 
@@ -308,22 +345,24 @@ server <- function(input, output, session) {
     
   })
   
+  # Reactive dataset and title for abundance plot
+  plotted.abundance <- reactiveValues(values = abundance)
+  title.abundance <- reactiveVal(value = "in All Stocks")
   
-  # Reactive dataset for abundance and effort plots
-  plotted.data <- reactiveValues(values = abundance)
-  
-  # Reactive dataset for trend plot - aimed towards future implementations of trend inputs
-  trend.data <- reactiveValues(values = abundance)
-  
-  # Reactive value that determines the title of the plots
-  title.label <- reactiveVal(value = "in All Stocks")
+  # Reactive dataset and title for trend plot
+  plotted.trend <- reactiveValues(values = trend %>% filter(trend_type == "linear_all"))
+  title.trend <- reactiveVal(value = "in All Stocks")
+  title.trend.type <- reactiveVal(value = "Linear")
+  yaxis.trend <- reactiveVal(value = "Trend (# of Seals)")
   
   # Reactive value that zooms map to centroid of selected features
   zoom.to.stock <- reactiveVal(value = FALSE)
   
   
-  #### Update reactive dataset when button is pressed 
+  ## Update reactive dataset when button is pressed ##
   observeEvent(input$update, {
+    title.trend.type(input$trend.type)
+    yaxis.trend(ifelse(input$trend.type == "Linear", "Trend (# of Seals)", "Trend (% of Population)"))
     
     # Process data if "stock" selected ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     if(input$filter == "Stock"){
@@ -331,17 +370,25 @@ server <- function(input, output, session) {
       if(input$stock.select != "All"){
         stock_filter <- input$stock.select
         
-        plotted.data$values <- calculate_abundance(data_cube = data_cube, group_by_var = c('cube', 'year'), subset_type = 'stock', poly_metadata = poly_metadata, filter = stock_filter)
+        plotted.abundance$values <- calculate_abundance(data_cube = data_cube, group_by_var = c('cube', 'year'), subset_type = 'stock', poly_metadata = poly_metadata, filter = stock_filter) 
+        title.abundance(paste("in the", input$stock.select, "Stock"))
+        
+        plotted.trend$values <- trend %>%
+          filter(if (input$trend.type == "Linear") trend_type == "linear_stock" else trend_type == "prop_stock") %>%
+          filter(identifier == stock_filter)
+        title.trend(paste("in the", input$stock.select, "Stock"))
+
         
         currently_plotted_ids <- survey_polygons %>%
           filter(stockname == stock_filter)
-        
-        title.label(paste("in the", input$stock.select, "Stock"))
       }
       else {
-        #currently_plotted_ids <- survey_polygons
-        plotted.data$values <- abundance
-        title.label("in All Stocks")
+        plotted.abundance$values <- abundance 
+        title.abundance("in All Stocks")
+        
+        plotted.trend$values <- trend %>%
+          filter(if (input$trend.type == "Linear") trend_type == "linear_all" else trend_type == "prop_all")
+        title.trend("in All Stocks")
       }
       zoom.to.stock(TRUE)
     }
@@ -351,9 +398,12 @@ server <- function(input, output, session) {
       
       # If there is no drawn shape, revert to default data (otherwise there is a fatal error and the R session is aborted)
       if(is.null(input$map1_draw_new_feature) || (input$map1_draw_new_feature$properties$feature_type == "circle")){
-        #currently_plotted_ids <- survey_polygons
-        plotted.data$values <- abundance
-        title.label("in All Stocks")
+        plotted.abundance$values <- abundance 
+        title.abundance("in All Stocks")
+        
+        plotted.trend$values <- trend %>%
+          filter(if (input$trend.type == "Linear") trend_type == "linear_all" else trend_type == "prop_all")
+        title.trend("in All Stocks")
       }
       else {
         # Select based on drawn polygon
@@ -368,12 +418,16 @@ server <- function(input, output, session) {
         poly_filter <- found_in_bounds$polyid
         
         # Subset data by polyids within polygon
-        plotted.data$values <- calculate_abundance(data_cube = data_cube, group_by_var = c('cube', 'year'), subset_type = 'poly_in_list', poly_metadata = poly_metadata, filter = poly_filter) 
+        plotted.abundance$values <- calculate_abundance(data_cube = data_cube, group_by_var = c('cube', 'year'), subset_type = 'poly_in_list', poly_metadata = poly_metadata, filter = poly_filter) %>%
+          left_join(trend_linear_stock, by = "year")
+        title.abundance("in the Selected Survey Units")
+        
+        plotted.trend$values <- trend %>%
+          filter(if (input$trend.type == "Linear") trend_type == "linear_all" else trend_type == "prop_all")
+        title.trend("in All Stocks")
         
         currently_plotted_ids <- survey_polygons %>%
           filter(polyid %in% poly_filter) 
-        
-        title.label("in the Selected Survey Units")
       }
       zoom.to.stock(TRUE)
     }
@@ -383,9 +437,12 @@ server <- function(input, output, session) {
       
       # If there is no drawn circle, revert to default data (otherwise there is a fatal error and the r session is aborted)
       if(is.null(input$map1_draw_new_feature) || (input$map1_draw_new_feature$properties$feature_type != "circle")){
-        #currently_plotted_ids <- survey_polygons
-        plotted.data$values <- abundance
-        title.label("in All Stocks")
+        plotted.abundance$values <- abundance 
+        title.abundance("in All Stocks")
+        
+        plotted.trend$values <- trend %>%
+          filter(if (input$trend.type == "Linear") trend_type == "linear_all" else trend_type == "prop_all")
+        title.trend("in All Stocks")
       }
       else {
         # Select based on drawn circle
@@ -403,12 +460,15 @@ server <- function(input, output, session) {
         circle_filter <- found_in_bounds$polyid
         
         # Calculate custom abundance estimates for app
-        plotted.data$values <- calculate_abundance(data_cube = data_cube, group_by_var = c('cube', 'year'), subset_type = 'poly_in_list', poly_metadata = poly_metadata, filter = circle_filter) 
+        plotted.abundance$values <- calculate_abundance(data_cube = data_cube, group_by_var = c('cube', 'year'), subset_type = 'poly_in_list', poly_metadata = poly_metadata, filter = circle_filter) 
+        title.abundance("Within the Given Radius")
+        
+        plotted.trend$values <- trend %>%
+          filter(if (input$trend.type == "Linear") trend_type == "linear_all" else trend_type == "prop_all")
+        title.trend("in All Stocks")
         
         currently_plotted_ids <- survey_polygons %>%
           filter(polyid %in% circle_filter) 
-        
-        title.label("Within the Given Radius")
       }
       zoom.to.stock(TRUE)
     }
@@ -416,25 +476,32 @@ server <- function(input, output, session) {
     # Process data if "survey unit" selected ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     else if (input$filter == "Survey Unit"){
       if(is.null(input$map1_shape_click$id)){
-        #currently_plotted_ids <- survey_polygons
-        plotted.data$values <- abundance
-        title.label("in All Stocks")
+        plotted.abundance$values <- abundance 
+        title.abundance("in All Stocks")
+        
+        plotted.trend$values <- trend %>%
+          filter(if (input$trend.type == "Linear") trend_type == "linear_all" else trend_type == "prop_all")
+        title.trend("in All Stocks")
       }
       else {
         singlePoly_filter <- input$map1_shape_click$id
         
         # Calculate custom abundance estimates for app
-        plotted.data$values <- calculate_abundance(data_cube = data_cube, group_by_var = c('cube', 'year'), subset_type = 'poly_in_list', poly_metadata = poly_metadata, filter = singlePoly_filter)
+        plotted.abundance$values <- calculate_abundance(data_cube = data_cube, group_by_var = c('cube', 'year'), subset_type = 'poly_in_list', poly_metadata = poly_metadata, filter = singlePoly_filter) 
+        title.abundance(paste("in Survey Unit:", singlePoly_filter))
+        
+        plotted.trend$values <- trend %>%
+          filter(if (input$trend.type == "Linear") trend_type == "linear_polyid" else trend_type == "prop_polyid") %>%
+          filter(identifier == singlePoly_filter )
+        title.trend(paste("in Survey Unit:", singlePoly_filter))
         
         currently_plotted_ids <- survey_polygons %>%
           filter(polyid %in% singlePoly_filter) 
-        
-        title.label(paste("in Survey Unit:", singlePoly_filter))
       }
       zoom.to.stock(TRUE)
     }
     
-    # Map survey_polygons where the ids match the ones in plotted.data$values
+    # Map survey_polygons where the ids match the ones in plotted.abundance$values
     leafletProxy("map1") %>% 
       clearGroup(group = "lines")
     
@@ -449,7 +516,6 @@ server <- function(input, output, session) {
                      group = "lines")
     }
 
-    
     if(zoom.to.stock()){
       if (exists("currently_plotted_ids") == TRUE){
         View(currently_plotted_ids)
@@ -467,8 +533,14 @@ server <- function(input, output, session) {
   
   observeEvent(input$default,{
     
-    plotted.data$values <- abundance
-    title.label("in All Stocks")
+    plotted.abundance$values <- abundance 
+    title.abundance("in All Stocks")
+    
+    plotted.trend$values <- trend %>%
+      filter(if (input$trend.type == "Linear") trend_type == "linear_all" else trend_type == "prop_all")
+    title.trend("in All Stocks")
+    title.trend.type <- input$trend.type
+    yaxis.trend <- ifelse(input$trend.type == "Linear", "Trend (# of Seals)", "Trend (% of Population)")
 
     leafletProxy("map1") %>% 
       setView(mean_x, mean_y, zoom = 4) %>% 
@@ -477,16 +549,13 @@ server <- function(input, output, session) {
   })
   
   ## Plots -----------------------------------------
+  # A caption for the chart is available if we'd be interested in including that
+  # Data labels in plotOptions -> line -> dataLabels
   
   # Plot for abundance
   output$plot1 <- renderHighchart({
-    abund_subset <- plotted.data$values
+    abund_subset <- plotted.abundance$values
 
-    # inferno_colors <-  unique(pal(survey_polygons$abund_est))
-    
-    # A caption for the chart is available if we'd be interested in including that
-    # Data labels in plotOptions -> line -> dataLabels
-    
     highchart() %>%
       hc_xAxis(title = list(text = "Year", style = list(color = "#FFFFFF",  fontSize = "16px")),
                labels = list(style = list(color = "#FFFFFF"))) %>%
@@ -523,57 +592,43 @@ server <- function(input, output, session) {
                     hcaes(x = year, y = abund_est),
                     color = "#E55C30", #"#ED6925",
                     name = "Estimated Abundance") %>%
-      hc_title(text = paste("Estimated Harbor Seal Abundance by Year", title.label()),
+      hc_title(text = paste("Estimated Harbor Seal Abundance by Year", title.abundance()),
                style = list(color = "#FFFFFF")) %>%
       hc_legend(itemStyle = list(color = "#FFFFFF"))
   })
   
-  # #Plot for trend
-  # output$plot2 <- renderHighchart({
-  #   
-  #   # Could have been done at the same time as the other filter but helps isolate problems when they arise
-  #   trend_subset <- plotted.data$values
-  #   
-  #   highchart() %>%
-  #     hc_xAxis(title = list(text = "Year", style = list(color = "#FFFFFF",  fontSize = "16px")),
-  #              labels = list(style = list(color = "#FFFFFF"))) %>%
-  #     hc_yAxis_multiples(list(title = list(text = "Trend", style = list(color = "#FFFFFF", fontSize = "16px")),
-  #                             labels = list(format = '{value}', style = list(color = "#FFFFFF")),
-  #                             min = min(trend_subset$trend_b95),
-  #                             max = max(trend_subset$trend_t95),
-  #                             showFirstLabel = TRUE,
-  #                             showLastLabel = TRUE,
-  #                             opposite = FALSE),
-  #                        list(title = list(text = "# of Survey Units Flown", style = list(color = "#FFFFFF", fontSize = "16px")),
-  #                             min = 0,
-  #                             max = max(trend_subset$effort),
-  #                             labels = list(format = "{value}", style = list(color = "#FFFFFF")),
-  #                             showLastLabel = TRUE, 
-  #                             opposite = TRUE)) %>%
-  #     hc_plotOptions(column = list(stacking = "normal")) %>%
-  #     hc_add_series(data = trend_subset,
-  #                   type = "column",
-  #                   hcaes(x = year, y = effort),
-  #                   color = "#855278",
-  #                   name = "Survey Effort",
-  #                   opacity = 0.8,
-  #                   yAxis = 1) %>%
-  #     hc_add_series(data = trend_subset,
-  #                   type = "arearange",
-  #                   hcaes(x = year, low = trend_b95, high = trend_t95),
-  #                   color = "#E6C6B5",
-  #                   opacity = 0.25,
-  #                   name = "95th Percentile Confidence Interval") %>%
-  #     hc_add_series(data = trend_subset,
-  #                   type="line",
-  #                   hcaes(x = year, y = trend_est),
-  #                   color = "#E55C30",
-  #                   name = "Trend") %>%
-  #     hc_title(text = paste(input$num.years,"-Year Trend in Estimated Harbor Seal Abundance By Year ", title.label(), sep = ""),
-  #              style = list(color = "#FFFFFF")) %>% 
-  #     hc_legend(itemStyle = list(color = "#FFFFFF"))
-  #   
-  # })
+  #Plot for trend
+  output$plot2 <- renderHighchart({
+    trend_subset <- plotted.trend$values
+    print(yaxis.trend())
+    
+    highchart() %>%
+     hc_xAxis(title = list(text = "Year", style = list(color = "#FFFFFF",  fontSize = "16px")),
+               labels = list(style = list(color = "#FFFFFF"))) %>%
+      hc_yAxis(title = list(text = yaxis.trend(), style = list(color = "#FFFFFF", fontSize = "16px")),
+               labels = list(format = '{value}', style = list(color = "#FFFFFF")),
+               min = min(trend_subset$trend_b95),
+               max = max(trend_subset$trend_t95),
+               showFirstLabel = TRUE,
+               showLastLabel = TRUE,
+               opposite = FALSE) %>%
+      hc_plotOptions(column = list(stacking = "normal")) %>%
+      hc_add_series(data = trend_subset,
+                    type = "arearange",
+                    hcaes(x = year, low = trend_b95, high = trend_t95),
+                    color = "#E6C6B5",
+                    opacity = 0.5,
+                    name = "95th Percentile Confidence Interval") %>%
+      hc_add_series(data = trend_subset,
+                    type="line",
+                    lineWidth = 5,
+                    hcaes(x = year, y = trend_est),
+                    color = "#E55C30",
+                    name = "Trend") %>%
+      hc_title(text = paste("8-Year ", title.trend.type(), " Trend in Estimated Harbor Seal Abundance By Year ", title.trend(), sep = ""),
+               style = list(color = "#FFFFFF")) %>%
+      hc_legend(itemStyle = list(color = "#FFFFFF"))
+  })
 }
 
 ## Run the application -----------------------------------------

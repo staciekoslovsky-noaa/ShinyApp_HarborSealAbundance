@@ -81,7 +81,6 @@ calculate_abundance <- function(data_cube, subset_type, group_by_var, most_recen
       summarise(abund_est = mean(abund)) %>%
       left_join(subset_abund_ci, by = "polyid")
     
-    # Add trend?
   } else {
     subset_abund_ci <- calculate_ci(subset, ci_type = "abund", group_by_ci = c("year"), select_ci = c("cube")) 
     
@@ -89,64 +88,117 @@ calculate_abundance <- function(data_cube, subset_type, group_by_var, most_recen
       group_by(year) %>%
       summarise(abund_est = mean(abund)) %>%
       left_join(subset_abund_ci, by = "year") 
-    
-    # Add trend?
   }
-  
-  # subset_trend <- subset %>%
-  #   arrange(cube, year) %>%
-  #   mutate(trend_est1 = roll::roll_lm(x = as.matrix(rep.int(1, nrow(subset))),
-  #                                    y = as.matrix(abund), 
-  #                                    width = 1, 
-  #                                    intercept = FALSE)$coefficients) %>%
-  #   mutate(trend_est8 = roll::roll_lm(x = as.matrix(rep.int(1, nrow(subset))), #1:8, #as.matrix(year - min(subset$year)),
-  #                                     y = as.matrix(abund), 
-  #                                     #weights = 8:1,
-  #                                     width = 8, 
-  #                                     intercept = FALSE)$coefficients) %>%
-  #   mutate(trend_test = 100*(exp(trend_est8)-1))
-  #
-  # subset_trend <- subset %>%
-  #   arrange(cube, year) %>%
-  #   mutate(trend_est = as.numeric(0))
-  # 
-  # min_year <- min(subset_trend$year) + 7
-  # 
-  # for (i in 8:nrow(subset_trend)){
-  #   # Skip first 8 years in each group 
-  #   if(subset_trend$year[i] < min_year) next
-  #   
-  #   # Calculate trend
-  #   trend_value <- 100 * exp(coef(lm(I(log(y))~x, data.frame(x = as.matrix(1:8), y = as.matrix(subset_trend$abund[(i-7):i]))))[2] - 1)
-  #   subset_trend$trend_est[i] <- trend_value
-  #   }
-  # 
-  # test <- roll::roll_lm(
-  #   x         = as.matrix(subset$year),
-  #   y         = as.matrix(subset$abund), 
-  #   width     = 8, 
-  #   intercept = FALSE
-  # )$coefficients
-  
-  # Temporary fix for trend data...
-  subset_trend <- subset_abund %>%
-    rename(trend_est = abund_est,
-           trend_b95 = abund_b95,
-           trend_t95 = abund_t95)
   
   # Get survey effort data
   if(subset_type == "most_recent"){
-    subset_summ <- subset_abund %>%
-      left_join(subset_trend, by = c("polyid")) 
+    subset_summ <- subset_abund # %>%
+      # left_join(subset_trend, by = c("polyid")) 
   } else {
     subset_summ <- subset_abund %>%
-      left_join(subset_trend, by = "year") %>%
+      # left_join(subset_trend, by = "year") %>%
       left_join(subset_abund_effort, by = c("year")) %>%
       mutate(abund_surveyed = ifelse(is.na(abund_surveyed), 0, abund_surveyed)) %>%
       mutate(effort = round(abund_surveyed * 100 / abund_est, 2))
   }
   
   return(subset_summ)
+}
+
+# Function to generate trend matrix (which feeds into calculating trend)
+generate_trend_matrix <- function(trend_type, maxi, trend_length, pop) {
+  trend_matrix <- NULL
+  
+  if (trend_type == "linear") {
+    for(i in 1:(maxi - trend_length + 1))
+      trend_matrix <- cbind(trend_matrix,
+                            apply(pop, 1, function(v){coef(lm(y~x, data.frame(x=1:8, y = v[i:(i + trend_length - 1)])))[2]}))
+  }
+  if (trend_type == "proportional"){
+    for(i in 1:(maxi - trend_length + 1)) 
+      trend_matrix = cbind(trend_matrix,
+                           100*(exp(apply(pop, 1, function(v){coef(lm(I(log(y))~x, data.frame(x=1:8, y = v[i:(i + trend_length - 1)])))[2]}))-1))
+  }
+  
+  return(trend_matrix)
+}
+
+# Function to calculate trend
+create_trend_table <- function(linear_trend_matrix, year_first, year_last, identifier) {
+  bot <- apply(linear_trend_matrix, 2, quantile, prob = .025) %>%
+    data.frame() %>%
+    rename(trend_b95 = 1) 
+  
+  top <- apply(linear_trend_matrix, 2, quantile, prob = .975) %>%
+    data.frame() %>%
+    rename(trend_t95 = 1)
+  
+  trend <- apply(linear_trend_matrix, 2, mean) %>%
+    data.frame() %>%
+    rename(trend_est = 1) %>%
+    mutate(year = c((year_first + 7): year_last),
+           identifier = identifier) %>%
+    cbind(bot) %>%
+    cbind(top)
+  
+  return(trend)
+}
+
+# Function to do all the things that are required to calculate trend
+calculate_trend <- function(data_cube_4trend, trend_type, group_by, group_list, year_first, year_last) {
+  # Define variables
+  n_years <- year_last - year_first + 1
+  pop <- matrix(NA, nrow = 1000, ncol = n_years)
+  maxi <- n_years
+  trend_length <- 8
+  
+  trend <- data.frame(trend_est = numeric(), 
+                      year = integer(),
+                      identifier = character(),
+                      trend_b95 = numeric(),
+                      trend_t95 = numeric())
+  
+  # Calculate trend for all polys
+  if (group_by == "all") {
+    for (i in 1:1000) pop[i,] <- apply(data_cube_4trend[[i]][,], 2, sum) 
+    trend_matrix <- generate_trend_matrix(trend_type, maxi, trend_length, pop)
+    trend <- create_trend_table(trend_matrix, year_first, year_last, identifier = 'all')
+  } 
+  else { # Calculate trend by stock and polyid
+    for (g in 1:length(group_list)) {
+      if (group_by == "stock") {
+        for(i in 1:1000) pop[i,] <- apply(data_cube_4trend[[i]][attr(data_cube_4trend[[i]], 'stockid') == g, ], 2, sum)
+      }
+      if (group_by == "polyid") {
+        pop <- matrix(unlist(lapply(data_cube_4trend, function(x){x[group_list[g],]})), nrow = 1000, ncol = n_years)
+      }
+      
+      trend_matrix <- generate_trend_matrix(trend_type, maxi, trend_length, pop)
+      trend_temp <- create_trend_table(trend_matrix, year_first, year_last, identifier = group_list[g])
+      
+      trend <- trend %>%
+        rbind(trend_temp)
+    }
+  }
+  
+  # Clean up trend table for use in app
+  if (group_by == "all") {
+    trend <- trend %>%
+      select(year, trend_est, trend_b95, trend_t95)
+  }
+  if (group_by == "stock") {
+    trend <- trend %>%
+      rename(stockname = identifier) %>%
+      select(stockname, year, trend_est, trend_b95, trend_t95)
+  }
+  if (group_by == "polyid") {
+    trend <- trend %>%
+      rename(polyid = identifier) %>%
+      select(polyid, year, trend_est, trend_b95, trend_t95)
+  }
+
+  
+  return(trend)
 }
 
 # Function to assign opacity values to polygons based on abundance
