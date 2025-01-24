@@ -56,7 +56,8 @@ save(last_surveyed, file = "last_surveyed.rda")
 #survey_polygons <- geojsonio::geojson_read(url.poly, what = "sp") %>%
 survey_polygons <- sf::st_read(con, query = "SELECT * FROM surv_pv_cst.geo_polys", geometry_column = "geom") %>%
   sf::st_as_sf(crs = 4326) %>%
-  select(-stockid, -trendpoly, -station, -distance_km, -iliamna, -glacier_name, -behm_canal) %>%
+  select(-stockid, -trendpoly, -station, -distance_km, #-iliamna, -glacier_name, 
+         -behm_canal) %>%
   rename(polygon_id = id) %>%
   left_join(last_surveyed, by = "polyid")
 
@@ -101,6 +102,30 @@ data_cube_polys <- rownames(data_cube_4trend[[1]])
 year_first <- min(data_cube$year)
 year_last <- max(data_cube$year)
 
+# CREATE trend for p(increase|decrease)
+n_years <- year_last - year_first + 1
+pop <- matrix(NA, nrow = 1000, ncol = n_years)
+maxi <- n_years
+trend_length <- 8
+
+trend_p_positive <- data.frame(polyid=character(),
+                               p_positive=numeric())
+
+for (p in 1:length(data_cube_polys)) {
+  pop <- matrix(unlist(lapply(data_cube_4trend, function(x){x[data_cube_polys[p],]})), nrow = 1000, ncol = n_years)
+  trend_matrix <- generate_trend_matrix(trend_type = "linear", maxi, trend_length, pop)
+  
+  trend_p_temp <- data.frame(last_trend = trend_matrix[,20]) %>% 
+    filter(last_trend >= 0) %>%
+    count() %>%
+    mutate(polyid = data_cube_polys[p],
+           p_positive = n/1000) %>%
+    select(-n)
+  
+  trend_p_positive <- trend_p_positive %>%
+    rbind(trend_p_temp)
+}
+
 # EXPORT trend_linear_all
 trend_linear_all <- calculate_trend(data_cube_4trend, trend_type = "linear", group_by = "all", group_list = "NA", year_first, year_last) 
 save(trend_linear_all, file = "C://smk/4app/trend_linear_all.rda") # Update to wd folder once data are shareable
@@ -118,13 +143,14 @@ trend_prop_all <- calculate_trend(data_cube_4trend, trend_type = "proportional",
 save(trend_prop_all, file = "C://smk/4app/trend_prop_all.rda") # Update to wd folder once data are shareable
 
 # EXPORT trend_prop_stock
-trend_prop_stock <- calculate_trend(data_cube_4trend, trend_type = "proportional", group_by = "stock", group_list = stock_ids, year_first, year_last)
+trend_prop_stock <- trend_linear_stock
+  # calculate_trend(data_cube_4trend, trend_type = "proportional", group_by = "stock", group_list = stock_ids, year_first, year_last) # this code is not working :/
 save(trend_prop_stock, file = "C://smk/4app/trend_prop_stock.rda") # Update to wd folder once data are shareable
 
 # EXPORT trend_prop_polyid
-trend_prop_polyid <- calculate_trend(data_cube_4trend, trend_type = "proportional", group_by = "polyid", group_list = data_cube_polys, year_first, year_last)
-###### CHANGE TO trend_prop_polyid once code is working!
-save(trend_linear_polyid, file = "C://smk/4app/trend_prop_polyid.rda") # Update to wd folder once data are shareable
+trend_prop_polyid <- trend_linear_polyid
+  # calculate_trend(data_cube_4trend, trend_type = "proportional", group_by = "polyid", group_list = data_cube_polys, year_first, year_last) # this code is not working :/
+save(trend_prop_polyid, file = "C://smk/4app/trend_prop_polyid.rda") # Update to wd folder once data are shareable
 
 
 
@@ -139,12 +165,23 @@ abundance_most_recent <- calculate_abundance(data_cube = data_cube, group_by_var
 survey_polygons <- survey_polygons %>% 
   left_join(abundance_most_recent, by = "polyid") %>% 
   left_join(trend_prop_polyid %>% filter (year == year_last), by = "polyid") %>%
+  left_join(trend_p_positive, by = "polyid") %>%
   mutate(surveyed = ifelse(is.na(surveyed), 0, surveyed)) %>%
   mutate(survey_date = ifelse(is.na(last_surveyed), 
                               "This survey unit has not been surveyed.",
                               paste0("This survey unit was last surveyed on ", last_surveyed, "."))) %>%
+  mutate(iliamna = ifelse(iliamna == 'N', 
+                          NA,
+                          "The counts for harbor seals at Iliamna Lake are processed differently than the rest of survey units. More information and abundance estimates can be found 
+                          in the [2018 Boveng et al. report](https://onlinelibrary.wiley.com/doi/full/10.1111/risa.12988).")) %>%
+  mutate(abund_est = ifelse(is.na(abund_est), 0, abund_est)) %>%
+  mutate(abund_b95 = ifelse(is.na(abund_b95), 0, abund_b95)) %>%
+  mutate(abund_t95 = ifelse(is.na(abund_t95), 0, abund_t95)) %>%
+  mutate(trend_est = ifelse(is.na(trend_est), 0, trend_est)) %>%
+  mutate(trend_b95 = ifelse(is.na(trend_b95), 0, trend_b95)) %>%
+  mutate(trend_t95 = ifelse(is.na(trend_t95), 0, trend_t95)) %>%
   filter(!is.na(abund_est)) %>%
-  select(polyid, stockname, abund_est, abund_b95, abund_t95, trend_est, trend_b95, trend_t95, survey_date, geom)
+  select(polyid, stockname, abund_est, abund_b95, abund_t95, trend_est, trend_b95, trend_t95, survey_date, iliamna, glacier_name, p_positive, geom)
 
 # EXPORT survey_polygons
 geojsonio::geojson_write(survey_polygons, geometry = "polygon", file = "C://smk/4app/survey_polygons.geojson") # Update to wd folder once data are shareable

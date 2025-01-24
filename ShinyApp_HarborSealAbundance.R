@@ -47,7 +47,7 @@ data_cube <- load_rdata(url.data_cube)
 
 # Survey polygons with most recent abundance estimates
 url.survey_polygons <- "C://smk/4app/survey_polygons.geojson"
-survey_polygons <- geojsonio::geojson_read(url.survey_polygons, what = "sp") %>%
+survey_polygons <- geojsonio::geojson_read(url.survey_polygons, what = "sp") %>% 
   sf::st_as_sf(crs = 4326)
 
 # Trend data
@@ -95,6 +95,20 @@ haulout$geometry <- (sf::st_geometry(haulout) + c(360,90)) %% c(360) - c(0,90)
 mean_x = (max(survey_polygons$centroid.x) + min(survey_polygons$centroid.x)) / 2
 mean_y = (max(survey_polygons$centroid.y) + min(survey_polygons$centroid.y)) / 2
 
+# Create field to store information provided in popup for survey_polygons
+survey_polygons <- survey_polygons %>%
+  mutate(popup_text = ifelse(is.na(iliamna), 
+                             paste("You have selected survey unit ", survey_polygons$polyid, 
+                                   ", found in the ", survey_polygons$stockname, 
+                                   " stock. In ", most_recent_year, 
+                                   ", the harbor seal abundance estimate for this survey unit was ", 
+                                   round(survey_polygons$abund_est, 2), " with a confidence interval of ", 
+                                   round(survey_polygons$abund_b95, 2), "-", round(survey_polygons$abund_t95, 2), 
+                                   ". The 8-year trend in harbor seal abundance was ", round(survey_polygons$trend_est, 2), 
+                                   " seals per year ", survey_polygons$survey_date, sep = ""),
+                             iliamna))
+  #### ADD information about p(increase|decrease) to popup_text
+
 
 # Create default abundance and trend datasets for app --------------------------------------
 abundance <- calculate_abundance(data_cube = data_cube, group_by_var = c('cube', 'year'), subset_type = 'all', poly_metadata = poly_metadata) 
@@ -118,16 +132,16 @@ map <- survey_polygons %>%
 
 # Initialize informational windows
 introduction <- paste("This application allows users to explore over 20 years of harbor seal population abundance and trend information within Alaska. Harbor seals are 
-  widely distributed throughout much of Alaska's near-coastal marine waters and are an important indicator of healthy ecosystems. The Alaska Fisheries Science Center 
+  found throughout much of Alaska's near-coastal marine waters and are an important indicator of healthy ecosystems. The Alaska Fisheries Science Center 
   (AFSC) has conducted aerial surveys for harbor seals in Alaska nearly every year since 1998. These aerial survey counts along with statistical modeling that accounts 
   for population dynamics and the proportion of seals in the water during surveys allows for estimates of abundance and trend across different spatial and temporal scales. 
   
   <br/><br/>
   More information about our harbor seal research can be found ", a("here", href = "https://www.fisheries.noaa.gov/alaska/marine-mammal-protection/harbor-seal-research-alaska"), ".", sep = "")
 
-instructions <- "This map displays polygons that represent survey units of harbor seals in Alaska, symbolized based on the 2018 abundance estimates; polygons with larger seal 
-  populations are both darker in color and less transparent. Hover over the polygon for more specific information about that particular site. The larger gray polygons represent 
-  each harbor seal stock. Hover over the polygon to get the name of the stock.
+instructions <- "This map displays polygons that represent survey units of harbor seals in Alaska, symbolized based on the most recent abundance estimates; polygons with larger seal 
+  populations are both darker in color and less transparent. Hover over the survey unit polygon for more specific information about that particular site. The larger gray polygons represent 
+  each harbor seal stock. Hover over the stock polygon to get the name of the stock.
   
   <br/><br/>
   Two figures represent summary information for the survey units shown in the map. The figures represent summary information for all the survey units, until a filter is applied. 
@@ -136,13 +150,13 @@ instructions <- "This map displays polygons that represent survey units of harbo
   the number of years of abundance data and thee type of abundance data (estimates or log of estimates) on which the trend should be calculated. 
   
   <br/><br/>
-  Survey units (polygons) can be selected dynamically within the map, and the associated figures are updated dynamically when you click the Update Plot
+  Survey units (polygons) can be selected dynamically within the map, and the associated figures are updated dynamically when you click the \"Update Plot\"
   button after making the filter selection. Filter options are as follows:<br/>
   <ui><li><u><b>By Stock</b></u> - use the drop-down menu to filter the data by harbor seal stock.
-  </li><li><u><b>By Survey Unit</b></u> - click on a single survey unit within the map.
-  </li><li><u><b>By Polygon</b></u> - use the pentagon button in the map to start drawing a custom polygon. Use the trash can button in the map to delete your custom polygon. 
-  Only one polygon can be drawn at a time. The centroid of the polygon must be encompassed within the drawn shape in order for it to be included in the filter.
-  </li><li><u><b>By Circle</b></u> - use the circle button in the map to start drawing a circle at the starting point of interest. As the circle size changes, the radius of the circle 
+  </li><li><u><b>By Survey Unit</b></u> - click on a single survey unit (polygon) within the map.
+  </li><li><u><b>By Custom Polygon</b></u> - use the pentagon button in the map to start drawing a user-defined custom polygon. Use the trash can button in the map to delete your custom polygon. 
+  Only one polygon can be drawn at a time. The centroid of each survey unit must be encompassed within the drawn shape in order for it to be included in the filter.
+  </li><li><u><b>By Custom Circle</b></u> - use the circle button in the map to start drawing a circle at the starting point of interest. As the circle size changes, the radius of the circle 
   is displayed."
 
 disclaimer <- "This is a prototype application. While the best efforts have been made to insure the highest quality, tools such as this are under constant development and are 
@@ -157,12 +171,12 @@ contact_info <- "This application was developed by Allison James as part of a su
   
   <br/> <br/> 
   For questions regarding the harbor seal aerial survey project, contact Josh London (josh.london@noaa.gov), and 
-  for questions regarding the statistical methods used to calculate the harbor seal abundance estimates, contact Jay Ver Hoef (jay.verhoef@noaa.gov)."
+  for questions regarding the statistical methods used to calculate the harbor seal abundance estimates, contact Brett McClintock (brett.mcclintock@noaa.gov)."
 
 data_access <- paste("The data we are using to power this application are publicly available for viewing and download. Links to each of these datasets are below: <br/>
   
   <ui><li>", a("Alaska Harbor Seal Aerial Survey Units", href = "https://www.arcgis.com/home/item.html?id=c63ccb17b9b144c4a529ee6a3d039665"), 
-  "</li><li>", a("Alaska Harbor Seal Abundance 2018", href = "https://www.arcgis.com/home/item.html?id=e69222ad91564422aba9ee0d2e70bfe2"),
+  "</li><li>", a("Alaska Harbor Seal Abundance", href = "https://www.arcgis.com/home/item.html?id=e69222ad91564422aba9ee0d2e70bfe2"),
   "</li><li>", a("Alaska Harbor Seal Haul-Out Locations", href = "https://www.arcgis.com/home/item.html?id=2c6ca3e595024d3990127bfe061d7ed3"),
   sep = "")
 
@@ -218,7 +232,7 @@ ui <- fluidPage(theme = shinytheme("superhero"),
                 br(),
                 (radioGroupButtons(inputId = "filter",
                                    label = div(style = "font-size:16px", "Filter Data By:"),
-                                   choices = c("Stock", "Survey Unit", "Polygon", "Circle"),
+                                   choices = c("Stock", "Survey Unit", "Custom Polygon", "Custom Circle"),
                                    selected = "Stock",
                                    direction = "vertical",
                                    status = "danger",
@@ -311,14 +325,7 @@ server <- function(input, output, session) {
       addPolygons(data = survey_polygons,
                   layerId = ~polyid,
                   group = "stockname",
-                  popup = ~htmltools::htmlEscape(paste("You have selected survey unit ", survey_polygons$polyid, 
-                                                       ", found in the ", survey_polygons$stockname, 
-                                                       " stock. In ", most_recent_year, 
-                                                       ", the harbor seal abundance estimate for this survey unit was ", 
-                                                       round(survey_polygons$abund_est, 2), " with a confidence interval of ", 
-                                                       round(survey_polygons$abund_b95, 2), "-", round(survey_polygons$abund_t95, 2), 
-                                                       ", and the 8-year trend in harbor seal abundance was ", round(survey_polygons$trend_est, 2), 
-                                                       " seals per year. ", survey_polygons$survey_date, sep = "")),
+                  popup = ~htmltools::htmlEscape(popup_text),
                   weight = 1,
                   fillColor = ~pal(survey_polygons$abund_est),
                   color = ~pal(survey_polygons$abund_est),
