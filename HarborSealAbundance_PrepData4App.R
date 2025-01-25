@@ -170,10 +170,6 @@ survey_polygons <- survey_polygons %>%
   mutate(survey_date = ifelse(is.na(last_surveyed), 
                               "This survey unit has not been surveyed.",
                               paste0("This survey unit was last surveyed on ", last_surveyed, "."))) %>%
-  mutate(iliamna = ifelse(iliamna == 'N', 
-                          NA,
-                          "The counts for harbor seals at Iliamna Lake are processed differently than the rest of survey units. More information and abundance estimates can be found 
-                          in the [2018 Boveng et al. report](https://onlinelibrary.wiley.com/doi/full/10.1111/risa.12988).")) %>%
   mutate(abund_est = ifelse(is.na(abund_est), 0, abund_est)) %>%
   mutate(abund_b95 = ifelse(is.na(abund_b95), 0, abund_b95)) %>%
   mutate(abund_t95 = ifelse(is.na(abund_t95), 0, abund_t95)) %>%
