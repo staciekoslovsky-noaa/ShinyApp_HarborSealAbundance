@@ -97,16 +97,27 @@ mean_y = (max(survey_polygons$centroid.y) + min(survey_polygons$centroid.y)) / 2
 
 # Create field to store information provided in popup for survey_polygons
 survey_polygons <- survey_polygons %>%
-  mutate(popup_text = ifelse(is.na(iliamna), 
-                             paste("You have selected survey unit ", survey_polygons$polyid, 
-                                   ", found in the ", survey_polygons$stockname, 
-                                   " stock. In ", most_recent_year, 
-                                   ", the harbor seal abundance estimate for this survey unit was ", 
-                                   round(survey_polygons$abund_est, 2), " with a confidence interval of ", 
-                                   round(survey_polygons$abund_b95, 2), "-", round(survey_polygons$abund_t95, 2), 
-                                   ". The 8-year trend in harbor seal abundance was ", round(survey_polygons$trend_est, 2), 
-                                   " seals per year ", survey_polygons$survey_date, sep = ""),
-                             iliamna))
+  mutate(popup_text = ifelse(is.na(survey_polygons$iliamna), # change to iliamna == 'N' after next running of PrepData4App
+                             ifelse(survey_polygons$abund_est == 0, 
+                                    paste0("You have selected survey unit ", survey_polygons$polyid, 
+                                          ", found in the ", survey_polygons$stockname, 
+                                          " stock. Harbor seals have not been observed in this survey unit. ",
+                                          survey_polygons$survey_date),
+                                    paste0("You have selected survey unit ", survey_polygons$polyid, 
+                                         ", found in the ", survey_polygons$stockname, 
+                                         " stock. In ", most_recent_year, 
+                                         ", the harbor seal abundance estimate for this survey unit was ", 
+                                         round(survey_polygons$abund_est, 2), " with a confidence interval of ", 
+                                         round(survey_polygons$abund_b95, 2), "-", round(survey_polygons$abund_t95, 2), 
+                                         ". The 8-year trend in harbor seal abundance was ", round(survey_polygons$trend_est, 2), 
+                                         " seals per year, and the probability of " ,
+                                         ifelse(survey_polygons$p_positive >= 0.50, 
+                                                paste0("population increase was ", round(survey_polygons$p_positive, 2), ". "),
+                                                paste0("population decline was ", 1-round(survey_polygons$p_positive, 2), ". ")),
+                                         survey_polygons$survey_date)),
+                             "The counts for harbor seals in survey units at Iliamna Lake are processed differently than the rest of survey area. More information can be found
+                             in the resources provided in Data Access section."
+                             ))
   #### ADD information about p(increase|decrease) to popup_text
 
 
@@ -177,7 +188,10 @@ data_access <- paste("The data we are using to power this application are public
   
   <ui><li>", a("Alaska Harbor Seal Aerial Survey Units", href = "https://www.arcgis.com/home/item.html?id=c63ccb17b9b144c4a529ee6a3d039665"), 
   "</li><li>", a("Alaska Harbor Seal Abundance", href = "https://www.arcgis.com/home/item.html?id=e69222ad91564422aba9ee0d2e70bfe2"),
-  "</li><li>", a("Alaska Harbor Seal Haul-Out Locations", href = "https://www.arcgis.com/home/item.html?id=2c6ca3e595024d3990127bfe061d7ed3"),
+  "</li><li>", a("Alaska Harbor Seal Haul-Out Locations", href = "https://www.arcgis.com/home/item.html?id=2c6ca3e595024d3990127bfe061d7ed3"), 
+  '<br/> <br/> For more information about abundance estimates for the Iliamna Lake survey units, please refer to the following resources:',
+  "</li><li>", a("2018 Boveng et al. report", href = "https://onlinelibrary.wiley.com/doi/full/10.1111/risa.12988"),
+  "</li><li>", a("1984-2013 dataset", href = "https://catalog.data.gov/dataset/a-dataset-of-aerial-survey-counts-of-harbor-seals-in-iliamna-lake-alaska-1984-20133"),
   sep = "")
 
 
@@ -269,7 +283,9 @@ ui <- fluidPage(theme = shinytheme("superhero"),
               type = "pills" # Selected tabs use the background fill color (which for some reason is orange)
             )
             )
-          )
+          ),
+          hr(),
+          print('Alaska Fisheries Science Center | Marine Mammal Laboratory')
 )
 
 ## Define server logic -----------------------------------------
@@ -401,7 +417,7 @@ server <- function(input, output, session) {
     }
     
     # Process data if "polygon" selected ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    else if(input$filter == "Polygon"){
+    else if(input$filter == "Custom Polygon"){
       
       # If there is no drawn shape, revert to default data (otherwise there is a fatal error and the R session is aborted)
       if(is.null(input$map1_draw_new_feature) || (input$map1_draw_new_feature$properties$feature_type == "circle")){
@@ -440,7 +456,7 @@ server <- function(input, output, session) {
     }
     
     # Process data if "circle" selected ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    else if(input$filter == "Circle"){
+    else if(input$filter == "Custom Circle"){
       
       # If there is no drawn circle, revert to default data (otherwise there is a fatal error and the r session is aborted)
       if(is.null(input$map1_draw_new_feature) || (input$map1_draw_new_feature$properties$feature_type != "circle")){
