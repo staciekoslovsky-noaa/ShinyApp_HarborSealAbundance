@@ -97,29 +97,27 @@ mean_y = (max(survey_polygons$centroid.y) + min(survey_polygons$centroid.y)) / 2
 
 # Create field to store information provided in popup for survey_polygons
 survey_polygons <- survey_polygons %>%
-  mutate(popup_text = ifelse(is.na(survey_polygons$iliamna), # change to iliamna == 'N' after next running of PrepData4App
-                             ifelse(survey_polygons$abund_est == 0, 
-                                    paste0("You have selected survey unit ", survey_polygons$polyid, 
-                                          ", found in the ", survey_polygons$stockname, 
+  mutate(p_positive = as.numeric(ifelse(is.na(p_positive), 0, p_positive))) %>%
+  mutate(popup_text = ifelse(is.na(iliamna), # change to iliamna == 'N' after next running of PrepData4App
+                             ifelse(abund_est == 0, 
+                                    paste0("You have selected survey unit ", polyid, 
+                                          ", found in the ", stockname, 
                                           " stock. Harbor seals have not been observed in this survey unit. ",
-                                          survey_polygons$survey_date),
-                                    paste0("You have selected survey unit ", survey_polygons$polyid, 
-                                         ", found in the ", survey_polygons$stockname, 
+                                          survey_date),
+                                    paste0("You have selected survey unit ", polyid, ", found in the ", stockname, 
                                          " stock. In ", most_recent_year, 
                                          ", the harbor seal abundance estimate for this survey unit was ", 
-                                         round(survey_polygons$abund_est, 2), " with a confidence interval of ", 
-                                         round(survey_polygons$abund_b95, 2), "-", round(survey_polygons$abund_t95, 2), 
-                                         ". The 8-year trend in harbor seal abundance was ", round(survey_polygons$trend_est, 2), 
-                                         " seals per year, and the probability of " ,
-                                         ifelse(survey_polygons$p_positive >= 0.50, 
-                                                paste0("population increase was ", round(survey_polygons$p_positive, 2), ". "),
-                                                paste0("population decline was ", 1-round(survey_polygons$p_positive, 2), ". ")),
-                                         survey_polygons$survey_date)),
-                             "The counts for harbor seals in survey units at Iliamna Lake are processed differently than the rest of survey area. More information can be found
+                                         round(abund_est, 2), " with a confidence interval of ", round(abund_b95, 2), "-", round(abund_t95, 2), 
+                                         ". The current 8-year trend in harbor seal abundance was based on abundance estimates from ", most_recent_year-8, "-", most_recent_year,
+                                         " and was estimated as ", round(trend_est, 2), 
+                                         " seals per year; the probability of " ,
+                                         ifelse(p_positive >= 0.50, 
+                                                paste0("population increase was ", p_positive, ". "),
+                                                paste0("population decline was ", 1-p_positive, ". ")),
+                                         survey_date)),
+                             "The counts for harbor seals in survey units at Iliamna Lake are analyzed in a process separate from the rest of survey area. More information can be found
                              in the resources provided in Data Access section."
                              ))
-  #### ADD information about p(increase|decrease) to popup_text
-
 
 # Create default abundance and trend datasets for app --------------------------------------
 abundance <- calculate_abundance(data_cube = data_cube, group_by_var = c('cube', 'year'), subset_type = 'all', poly_metadata = poly_metadata) 
@@ -246,7 +244,7 @@ ui <- fluidPage(theme = shinytheme("superhero"),
                 br(),
                 (radioGroupButtons(inputId = "filter",
                                    label = div(style = "font-size:16px", "Filter Data By:"),
-                                   choices = c("Stock", "Survey Unit", "Custom Polygon", "Custom Circle"),
+                                   choices = c("Stock", "Survey Unit", "Custom Polygon", "Custom Circle", "Glacial Sites"),
                                    selected = "Stock",
                                    direction = "vertical",
                                    status = "danger",
@@ -447,7 +445,7 @@ server <- function(input, output, session) {
         
         plotted.trend$values <- trend %>%
           filter(if (input$trend.type == "Linear") trend_type == "linear_all" else trend_type == "prop_all")
-        title.trend("in All Stocks")
+        title.trend("in All Stocks (trend cannot be subset to the selected survey units)")
         
         currently_plotted_ids <- survey_polygons %>%
           filter(polyid %in% poly_filter) 
@@ -488,11 +486,35 @@ server <- function(input, output, session) {
         
         plotted.trend$values <- trend %>%
           filter(if (input$trend.type == "Linear") trend_type == "linear_all" else trend_type == "prop_all")
-        title.trend("in All Stocks")
+        title.trend("in All Stocks  (trend cannot be subset to the selected survey units)")
         
         currently_plotted_ids <- survey_polygons %>%
           filter(polyid %in% circle_filter) 
       }
+      zoom.to.stock(TRUE)
+    }
+    
+    # Process data if "glacial" selected ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    else if(input$filter == "Glacial Sites"){
+      # Select glacial sites
+      poly_filter <- survey_polygons %>%
+        filter(!is.na(glacier_name)) %>%
+        select(polyid) %>%
+        st_drop_geometry() 
+      poly_filter <- poly_filter$polyid
+        
+      # Subset data by polyids within polygon
+      plotted.abundance$values <- calculate_abundance(data_cube = data_cube, group_by_var = c('cube', 'year'), subset_type = 'poly_in_list', poly_metadata = poly_metadata, filter = poly_filter) %>%
+        left_join(trend_linear_stock, by = "year")
+      title.abundance("in Survey Units in Glacial Habitat")
+      
+      plotted.trend$values <- trend %>%
+        filter(if (input$trend.type == "Linear") trend_type == "linear_all" else trend_type == "prop_all")
+      title.trend("in All Stocks (trend cannot be subset to the selected survey units)")
+      
+      currently_plotted_ids <- survey_polygons %>%
+        filter(polyid %in% poly_filter) 
+      
       zoom.to.stock(TRUE)
     }
     
@@ -595,7 +617,7 @@ server <- function(input, output, session) {
                               labels = list(format = "{value}%", style = list(color = "#FFFFFF")),
                               showLastLabel = TRUE, 
                               opposite = TRUE)) %>%
-      hc_plotOptions(column = list(stacking = "normal")) %>%
+      # hc_plotOptions(column = list(stacking = "normal")) %>%
       hc_add_series(data = abund_subset,
                     type = "column",
                     hcaes(x = year, y = effort),
@@ -635,7 +657,7 @@ server <- function(input, output, session) {
                showFirstLabel = TRUE,
                showLastLabel = TRUE,
                opposite = FALSE) %>%
-      hc_plotOptions(column = list(stacking = "normal")) %>%
+      # hc_plotOptions(column = list(stacking = "normal")) %>%
       hc_add_series(data = trend_subset,
                     type = "arearange",
                     hcaes(x = year, low = trend_b95, high = trend_t95),
