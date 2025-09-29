@@ -110,34 +110,38 @@ generate_trend_matrix <- function(trend_type, maxi, trend_length, pop) {
   trend_matrix <- NULL
   
   if (trend_type == "linear") {
-    for(i in 1:(maxi - trend_length + 1))
+    for(i in 1:(maxi - trend_length + 1)) {
       trend_matrix <- cbind(trend_matrix,
                             apply(pop, 1, function(v){coef(lm(y~x, data.frame(x=1:8, y = v[i:(i + trend_length - 1)])))[2]}))
+    }
   }
   if (trend_type == "proportional"){
-    for(i in 1:(maxi - trend_length + 1)) 
+    for(i in 1:(maxi - trend_length + 1)) {
       trend_matrix = cbind(trend_matrix,
-                           100*(exp(apply(pop, 1, function(v){coef(lm(I(log(y))~x, data.frame(x=1:8, y = v[i:(i + trend_length - 1)])))[2]}))-1))
+                           100*(exp(apply(pop, 1, 
+                                          function(v){coef(glm(y ~ x, data = data.frame(x = 1:8, y = v[i:(i + trend_length - 1)]), family = poisson) # new code from Brett 9/18/2025
+                                                           )[2]}))-1)) 
+    }
   }
   
   return(trend_matrix)
 }
 
 # Function to calculate trend
-create_trend_table <- function(linear_trend_matrix, year_first, year_last, identifier) {
-  bot <- apply(linear_trend_matrix, 2, quantile, prob = .025) %>%
+create_trend_table <- function(trend_matrix, year_first, year_last, identifier) {
+  bot <- apply(trend_matrix, 2, quantile, prob = .025) %>%
     data.frame() %>%
     rename(trend_b95 = 1) 
   
-  top <- apply(linear_trend_matrix, 2, quantile, prob = .975) %>%
+  top <- apply(trend_matrix, 2, quantile, prob = .975) %>%
     data.frame() %>%
     rename(trend_t95 = 1)
   
-  trend <- apply(linear_trend_matrix, 2, mean) %>%
+  trend <- apply(trend_matrix, 2, mean) %>%
     data.frame() %>%
     rename(trend_est = 1) %>%
     mutate(year = c((year_first + 7): year_last),
-           identifier = identifier) %>%
+          identifier = identifier) %>%
     cbind(bot) %>%
     cbind(top)
   
@@ -148,7 +152,8 @@ create_trend_table <- function(linear_trend_matrix, year_first, year_last, ident
 calculate_trend <- function(data_cube_4trend, trend_type, group_by, group_list, year_first, year_last) {
   # Define variables
   n_years <- year_last - year_first + 1
-  pop <- matrix(NA, nrow = 1000, ncol = n_years)
+  num_samples <- length(data_cube_4trend)
+  pop <- matrix(NA, nrow = num_samples, ncol = n_years)
   maxi <- n_years
   trend_length <- 8
   
@@ -160,17 +165,18 @@ calculate_trend <- function(data_cube_4trend, trend_type, group_by, group_list, 
   
   # Calculate trend for all polys
   if (group_by == "all") {
-    for (i in 1:1000) pop[i,] <- apply(data_cube_4trend[[i]][,], 2, sum) 
+    for (i in 1:num_samples) pop[i,] <- apply(data_cube_4trend[[i]][,], 2, sum) 
     trend_matrix <- generate_trend_matrix(trend_type, maxi, trend_length, pop)
     trend <- create_trend_table(trend_matrix, year_first, year_last, identifier = 'all')
   } 
   else { # Calculate trend by stock and polyid
     for (g in 1:length(group_list)) {
       if (group_by == "stock") {
-        for(i in 1:1000) pop[i,] <- apply(data_cube_4trend[[i]][attr(data_cube_4trend[[i]], 'stockid') == g, ], 2, sum)
+        for(i in 1:num_samples) pop[i,] <- apply(data_cube_4trend[[i]][attr(data_cube_4trend[[i]], 'stockid') == g, ], 2, sum)
       }
       if (group_by == "polyid") {
-        pop <- matrix(unlist(lapply(data_cube_4trend, function(x){x[group_list[g],]})), nrow = 1000, ncol = n_years)
+        print(g)
+        pop <- matrix(unlist(lapply(data_cube_4trend, function(x){x[group_list[g],]})), nrow = num_samples, ncol = n_years)
       }
       
       trend_matrix <- generate_trend_matrix(trend_type, maxi, trend_length, pop)
