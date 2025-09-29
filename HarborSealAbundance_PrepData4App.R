@@ -17,10 +17,10 @@ con <- RPostgreSQL::dbConnect(PostgreSQL(),
                               user = Sys.getenv("pep_admin"), 
                               password =  Sys.getenv("admin_pw"))
 
-# # CREATE stock_polygons ~~~~~~~~~~~~~~~~~~~ EXPORT IS NOT WORKING CORRECTLY....
-# stock_polygons <- sf::st_read(con, query = "SELECT * FROM stock.geo_dist_pv", geometry_column = "geom") 
-# # EXPORT stock_polygons
-# geojsonio::geojson_write(stock_polygons, geometry = "polygon", file = "survey_stocks.geojson")
+# # CREATE stock_polygons ~~~~~~~~~~~~~~~~~~~ 
+stock_polygons <- sf::st_read(con, query = "SELECT * FROM stock.geo_dist_pv", geometry_column = "geom")
+# EXPORT stock_polygons
+geojsonio::geojson_write(stock_polygons, geometry = "polygon", file = "survey_stocks.geojson")
 
 # CREATE haulout ~~~~~~~~~~~~~~~~~~~
 haulout <- sf::st_read(con, query = "SELECT * FROM surv_pv_cst.geo_haulout_20220414", geometry_column = "geom") %>%
@@ -74,7 +74,7 @@ rm(con)
 
 
 # CREATE data_cube ~~~~~~~~~~~~~~~~~~~
-url.data_cube <- "C://smk/akpv_datacube.rda"
+url.data_cube <- "C://smk/HarborSealApp/akpv_datacube.rda"
 data_cube <- load_rdata(url.data_cube) %>% 
   data.frame() %>%
   rownames_to_column() %>%
@@ -89,7 +89,7 @@ data_cube <- load_rdata(url.data_cube) %>%
   left_join(stock_names, by = "polyid")
 
 # EXPORT data_cube
-save(data_cube, file = "C://smk/4app/data_cube.rda") # Update to wd folder once data are shareable
+save(data_cube, file = "C://smk/HarborSealApp/4app/data_cube.rda") # Update to wd folder once data are shareable
 
 
 
@@ -111,7 +111,8 @@ trend_length <- 8
 trend_p_positive <- data.frame(polyid=character(),
                                p_positive=numeric())
 
-for (p in 1:length(data_cube_polys)) {
+for (p in 1:length(data_cube_polys)) { # takes 4-5 hours to run
+  print(p)
   pop <- matrix(unlist(lapply(data_cube_4trend, function(x){x[data_cube_polys[p],]})), nrow = 1000, ncol = n_years)
   trend_matrix <- generate_trend_matrix(trend_type = "linear", maxi, trend_length, pop)
   
@@ -126,31 +127,30 @@ for (p in 1:length(data_cube_polys)) {
     rbind(trend_p_temp)
 }
 
+## Rerun all of these!
 # EXPORT trend_linear_all
 trend_linear_all <- calculate_trend(data_cube_4trend, trend_type = "linear", group_by = "all", group_list = "NA", year_first, year_last) 
-save(trend_linear_all, file = "C://smk/4app/trend_linear_all.rda") # Update to wd folder once data are shareable
+save(trend_linear_all, file = "C://smk/HarborSealApp/4app/trend_linear_all.rda") # Update to wd folder once data are shareable
 
 # EXPORT trend_linear_stock
 trend_linear_stock <- calculate_trend(data_cube_4trend, trend_type = "linear", group_by = "stock", group_list = stock_ids, year_first, year_last) 
-save(trend_linear_stock, file = "C://smk/4app/trend_linear_stock.rda") # Update to wd folder once data are shareable
+save(trend_linear_stock, file = "C://smk/HarborSealApp/4app/trend_linear_stock.rda") # Update to wd folder once data are shareable
 
-# EXPORT trend_linear_polyid
+# EXPORT trend_linear_polyid (takes several hours to run)
 trend_linear_polyid <- calculate_trend(data_cube_4trend, trend_type = "linear", group_by = "polyid", group_list = data_cube_polys, year_first, year_last) 
-save(trend_linear_polyid, file = "C://smk/4app/trend_linear_polyid.rda") # Update to wd folder once data are shareable
+save(trend_linear_polyid, file = "C://smk/HarborSealApp/4app/trend_linear_polyid.rda") # Update to wd folder once data are shareable
 
 # EXPORT trend_prop_all
 trend_prop_all <- calculate_trend(data_cube_4trend, trend_type = "proportional", group_by = "all", group_list = "NA", year_first, year_last) 
-save(trend_prop_all, file = "C://smk/4app/trend_prop_all.rda") # Update to wd folder once data are shareable
+save(trend_prop_all, file = "C://smk/HarborSealApp/4app/trend_prop_all.rda") # Update to wd folder once data are shareable
 
 # EXPORT trend_prop_stock
-trend_prop_stock <- trend_linear_stock
-  # calculate_trend(data_cube_4trend, trend_type = "proportional", group_by = "stock", group_list = stock_ids, year_first, year_last) # this code is not working :/
-save(trend_prop_stock, file = "C://smk/4app/trend_prop_stock.rda") # Update to wd folder once data are shareable
+trend_prop_stock <- calculate_trend(data_cube_4trend, trend_type = "proportional", group_by = "stock", group_list = stock_ids, year_first, year_last)
+save(trend_prop_stock, file = "C://smk/HarborSealApp/4app/trend_prop_stock.rda") # Update to wd folder once data are shareable
 
-# EXPORT trend_prop_polyid
-trend_prop_polyid <- trend_linear_polyid
-  # calculate_trend(data_cube_4trend, trend_type = "proportional", group_by = "polyid", group_list = data_cube_polys, year_first, year_last) # this code is not working :/
-save(trend_prop_polyid, file = "C://smk/4app/trend_prop_polyid.rda") # Update to wd folder once data are shareable
+# EXPORT trend_prop_polyid (takes several hours to run) ## Rerun after feedback from Brett!
+trend_prop_polyid <- calculate_trend(data_cube_4trend, trend_type = "proportional", group_by = "polyid", group_list = data_cube_polys, year_first, year_last)
+save(trend_prop_polyid, file = "C://smk/HarborSealApp/4app/trend_prop_polyid.rda") # Update to wd folder once data are shareable
 
 
 
@@ -180,7 +180,7 @@ survey_polygons <- survey_polygons %>%
   select(polyid, stockname, abund_est, abund_b95, abund_t95, trend_est, trend_b95, trend_t95, survey_date, iliamna, glacier_name, p_positive, geom)
 
 # EXPORT survey_polygons
-geojsonio::geojson_write(survey_polygons, geometry = "polygon", file = "C://smk/4app/survey_polygons.geojson") # Update to wd folder once data are shareable
+geojsonio::geojson_write(survey_polygons, geometry = "polygon", file = "C://smk/HarborSealApp/4app/survey_polygons.geojson") # Update to wd folder once data are shareable
 
 
 
