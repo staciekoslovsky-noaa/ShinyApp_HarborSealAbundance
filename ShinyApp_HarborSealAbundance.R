@@ -42,31 +42,31 @@ url.last_surveyed <- "https://raw.githubusercontent.com/staciekoslovsky-noaa/Shi
 load(url(url.last_surveyed))
 
 # Abundance data cube
-url.data_cube <- "C://smk/4app/data_cube.rda"
+url.data_cube <- "C://smk/HarborSealApp/4app/data_cube.rda"
 data_cube <- load_rdata(url.data_cube) 
 
 # Survey polygons with most recent abundance estimates
-url.survey_polygons <- "C://smk/4app/survey_polygons.geojson"
+url.survey_polygons <- "C://smk/HarborSealApp/4app/survey_polygons.geojson"
 survey_polygons <- geojsonio::geojson_read(url.survey_polygons, what = "sp") %>% 
   sf::st_as_sf(crs = 4326)
 
 # Trend data
-url.trend_linear_all <- "C://smk/4app/trend_linear_all.rda"
+url.trend_linear_all <- "C://smk/HarborSealApp/4app/trend_linear_all.rda"
 trend_linear_all <- load_rdata(url.trend_linear_all)
 
-url.trend_linear_stock <- "C://smk/4app/trend_linear_stock.rda"
+url.trend_linear_stock <- "C://smk/HarborSealApp/4app/trend_linear_stock.rda"
 trend_linear_stock <- load_rdata(url.trend_linear_stock)
 
-url.trend_linear_polyid <- "C://smk/4app/trend_linear_polyid.rda"
+url.trend_linear_polyid <- "C://smk/HarborSealApp/4app/trend_linear_polyid.rda"
 trend_linear_polyid <- load_rdata(url.trend_linear_polyid)
 
-url.trend_prop_all <- "C://smk/4app/trend_prop_all.rda"
+url.trend_prop_all <- "C://smk/HarborSealApp/4app/trend_prop_all.rda"
 trend_prop_all <- load_rdata(url.trend_prop_all)
 
-url.trend_prop_stock <- "C://smk/4app/trend_prop_stock.rda"
+url.trend_prop_stock <- "C://smk/HarborSealApp/4app/trend_prop_stock.rda"
 trend_prop_stock <- load_rdata(url.trend_prop_stock)
 
-url.trend_prop_polyid <- "C://smk/4app/trend_prop_polyid.rda"
+url.trend_prop_polyid <- "C://smk/HarborSealApp/4app/trend_prop_polyid.rda"
 trend_prop_polyid <- load_rdata(url.trend_prop_polyid)
 
 
