@@ -127,7 +127,6 @@ for (p in 1:length(data_cube_polys)) { # takes 4-5 hours to run
     rbind(trend_p_temp)
 }
 
-## Rerun all of these!
 # EXPORT trend_linear_all
 trend_linear_all <- calculate_trend(data_cube_4trend, trend_type = "linear", group_by = "all", group_list = "NA", year_first, year_last) 
 save(trend_linear_all, file = "C://smk/HarborSealApp/4app/trend_linear_all.rda") # Update to wd folder once data are shareable

@@ -17,18 +17,18 @@ load_rdata <- function(fileName){
 }
 
 # Function to calculate confidence intervals
-calculate_ci <- function(subset, ci_type, group_by_ci, select_ci){
+calculate_ci <- function(subset, ci_type, group_by_ci, select_ci, num_samples){
   subset_abund_ci <- subset %>%
     group_by_at(group_by_ci) %>%
     arrange(abund) %>%
     mutate(rank = sequence(n())) %>%
     ungroup() %>%
-    filter(rank == 25 | rank == 975) %>%
+    filter(rank == num_samples * 0.025 | rank == num_samples * 0.975) %>%
     select(!select_ci) %>%
     unique() %>%
     pivot_wider(names_from = rank, values_from = abund) %>%
-    rename(!!(paste0(as.name(ci_type), "_b95")) := "25",
-           !!(paste0(as.name(ci_type), "_t95")) := "975")
+    rename(!!(paste0(as.name(ci_type), "_b95")) := as.character(num_samples * 0.025),
+           !!(paste0(as.name(ci_type), "_t95")) := as.character(num_samples * 0.975))
 }
 
 # Function to process data cube to desired output
@@ -49,6 +49,9 @@ calculate_abundance <- function(data_cube, subset_type, group_by_var, most_recen
     subset <- data_cube %>%
       filter(polyid %in% filter) 
   }
+  
+  # Calculate # of samples in data
+  num_samples <- max(as.numeric(data_cube$cube)) + 1
   
   # Create list of polys being processed based on the subset_type
   polys <- unique(subset$polyid)
@@ -74,7 +77,7 @@ calculate_abundance <- function(data_cube, subset_type, group_by_var, most_recen
     ungroup()
   
   if(subset_type == "most_recent"){
-    subset_abund_ci <- calculate_ci(subset, ci_type = "abund", group_by_ci = c("polyid", "year"), select_ci = c("cube", "year")) 
+    subset_abund_ci <- calculate_ci(subset, ci_type = "abund", group_by_ci = c("polyid", "year"), select_ci = c("cube", "year"), num_samples) 
     
     subset_abund <- subset %>%
       group_by(polyid) %>%
@@ -82,7 +85,7 @@ calculate_abundance <- function(data_cube, subset_type, group_by_var, most_recen
       left_join(subset_abund_ci, by = "polyid")
     
   } else {
-    subset_abund_ci <- calculate_ci(subset, ci_type = "abund", group_by_ci = c("year"), select_ci = c("cube")) 
+    subset_abund_ci <- calculate_ci(subset, ci_type = "abund", group_by_ci = c("year"), select_ci = c("cube"), num_samples) 
     
     subset_abund <- subset %>%
       group_by(year) %>%
