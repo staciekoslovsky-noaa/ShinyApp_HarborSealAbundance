@@ -86,7 +86,32 @@ survey_polygons$centroid.x <- st_coordinates(sf::st_centroid(survey_polygons))[,
 survey_polygons$centroid.y <- st_coordinates(sf::st_centroid(survey_polygons))[,2]
 
 # Move stock polygons across dateline
-stock_polygons$geometry <- (sf::st_geometry(stock_polygons) + c(360,90)) %% c(360) - c(0,90)
+stock_polygons$geometry <- (sf::st_geometry(stock_polygons) + c(360,90)) %% c(360) - c(0,90) # No longer working :(
+
+# Code from Allison for moving stock polygons...test only if needed
+
+# for(j in 1:length(stock_polygons@polygons)){
+#   for(k in 1:length(stock_polygons@polygons[[j]]@Polygons)){
+#     #Move the polygons (besides the Aleutians)
+#     for (i in 1:length(stock_polygons@polygons[[j]]@Polygons[[k]]@coords[,1])){
+#       if (stock_polygons@polygons[[j]]@Polygons[[k]]@coords[i, 1] < 0){
+#         stock_polygons@polygons[[j]]@Polygons[[k]]@coords[i, 1] <- stock_polygons@polygons[[j]]@Polygons[[k]]@coords[i, 1] + 360
+#         #if the polygon's longitude is below 0, add 360 degrees to it to move it across the map
+#       }
+#     }
+#     #Append values of the centroids to a list for future use
+#     if(stock_polygons@polygons[[j]]@Polygons[[k]]@labpt[1] < 0){
+#       #Move centroids 360 degrees again
+#       x_stocks <- append(x_stocks, stock_polygons@polygons[[j]]@Polygons[[k]]@labpt[1] + 360)
+#       #Move centroids across the map as well
+#       stock_polygons@polygons[[j]]@Polygons[[k]]@labpt[1] <- stock_polygons@polygons[[j]]@Polygons[[k]]@labpt[1] + 360
+#     }
+#     else{
+#       x_stocks <- append(x_stocks, stock_polygons@polygons[[j]]@Polygons[[k]]@labpt[1])
+#     }
+#     y_stocks <- append(y_stocks, stock_polygons@polygons[[j]]@Polygons[[k]]@labpt[2])
+#   }
+# }
 
 # Move haulout points across dateline
 haulout$geometry <- (sf::st_geometry(haulout) + c(360,90)) %% c(360) - c(0,90)
@@ -328,14 +353,15 @@ server <- function(input, output, session) {
         singleFeature = TRUE)  %>%
       addScaleBar(position = "bottomright",
                   options = scaleBarOptions(maxWidth = 250)) %>% 
-      addPolygons(data = stock_polygons,
-                  fillOpacity = 0.2,
-                  opacity = 0.4,
-                  fillColor = ~factpal(stockname), 
-                  color = "gray",
-                  weight = 2,
-                  label = stock_polygons$stockname,
-                  labelOptions = labelOptions(sticky = FALSE, noHide = FALSE, textOnly = TRUE, direction = "center")) %>% 
+      addPolygons(data = stock_polygons) %>% 
+      # addPolygons(data = stock_polygons,
+      #             fillOpacity = 0.2,
+      #             opacity = 0.4,
+      #             fillColor = ~factpal(stockname), 
+      #             color = "gray",
+      #             weight = 2,
+      #             label = stock_polygons$stockname,
+      #             labelOptions = labelOptions(sticky = FALSE, noHide = FALSE, textOnly = TRUE, direction = "center")) %>% 
       addPolygons(data = survey_polygons,
                   layerId = ~polyid,
                   group = "stockname",
