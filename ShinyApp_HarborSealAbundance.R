@@ -86,7 +86,7 @@ survey_polygons$centroid.x <- st_coordinates(sf::st_centroid(survey_polygons))[,
 survey_polygons$centroid.y <- st_coordinates(sf::st_centroid(survey_polygons))[,2]
 
 # Move stock polygons across dateline
-stock_polygons$geometry <- (sf::st_geometry(stock_polygons) + c(360,90)) %% c(360) - c(0,90) # No longer working :(
+stock_polygons$geometry <- (sf::st_geometry(stock_polygons) + c(360,90)) %% c(360) - c(0,90) # No longer working with new exports from the DB (might be an issue in the geojson itself)
 
 # Code from Allison for moving stock polygons...test only if needed
 
@@ -353,15 +353,15 @@ server <- function(input, output, session) {
         singleFeature = TRUE)  %>%
       addScaleBar(position = "bottomright",
                   options = scaleBarOptions(maxWidth = 250)) %>% 
-      addPolygons(data = stock_polygons) %>% 
-      # addPolygons(data = stock_polygons,
-      #             fillOpacity = 0.2,
-      #             opacity = 0.4,
-      #             fillColor = ~factpal(stockname), 
-      #             color = "gray",
-      #             weight = 2,
-      #             label = stock_polygons$stockname,
-      #             labelOptions = labelOptions(sticky = FALSE, noHide = FALSE, textOnly = TRUE, direction = "center")) %>% 
+      # addPolygons(data = stock_polygons) %>% 
+      addPolygons(data = stock_polygons,
+                  fillOpacity = 0.2,
+                  opacity = 0.4,
+                  fillColor = ~factpal(stockname),
+                  color = "gray",
+                  weight = 2,
+                  label = stock_polygons$stockname,
+                  labelOptions = labelOptions(sticky = FALSE, noHide = FALSE, textOnly = TRUE, direction = "center")) %>%
       addPolygons(data = survey_polygons,
                   layerId = ~polyid,
                   group = "stockname",
