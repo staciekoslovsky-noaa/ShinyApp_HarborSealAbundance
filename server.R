@@ -112,22 +112,22 @@ server <- function(input, output, session) {
   })
 
   # Reactive dataset and title for abundance plot
-  plotted.abundance <- reactiveValues(values = abundance)
-  title.abundance <- reactiveVal(value = "in All Stocks")
+  plotted.abundance <- shiny::reactiveValues(values = abundance)
+  title.abundance <- shiny::reactiveVal(value = "in All Stocks")
 
   # Reactive dataset and title for trend plot
-  plotted.trend <- reactiveValues(
+  plotted.trend <- shiny::reactiveValues(
     values = trend %>% filter(trend_type == "linear_all")
   )
-  title.trend <- reactiveVal(value = "in All Stocks")
-  title.trend.type <- reactiveVal(value = "Linear")
-  yaxis.trend <- reactiveVal(value = "Trend (# of Seals)")
+  title.trend <- shiny::reactiveVal(value = "in All Stocks")
+  title.trend.type <- shiny::reactiveVal(value = "Linear")
+  yaxis.trend <- shiny::reactiveVal(value = "Trend (# of Seals)")
 
   # Reactive value that zooms map to centroid of selected features
-  zoom.to.stock <- reactiveVal(value = FALSE)
+  zoom.to.stock <- shiny::reactiveVal(value = FALSE)
 
   ## Update reactive dataset when button is pressed ##
-  observeEvent(input$update, {
+  shiny::observeEvent(input$update, {
     title.trend.type(input$trend.type)
     yaxis.trend(ifelse(
       input$trend.type == "Linear",
@@ -429,7 +429,7 @@ server <- function(input, output, session) {
     }
   })
 
-  observeEvent(input$default, {
+  shiny::observeEvent(input$default, {
     plotted.abundance$values <- abundance
     title.abundance("in All Stocks")
 
@@ -459,7 +459,7 @@ server <- function(input, output, session) {
   # Data labels in plotOptions -> line -> dataLabels
 
   # Plot for abundance
-  output$plot1 <- leaflet::renderHighchart({
+  output$plot1 <- highcharter::renderHighchart({
     abund_subset <- plotted.abundance$values
 
     highchart() %>%
@@ -532,7 +532,7 @@ server <- function(input, output, session) {
   })
 
   #Plot for trend
-  output$plot2 <- leaflet::renderHighchart({
+  output$plot2 <- highcharter::renderHighchart({
     trend_subset <- plotted.trend$values
     print(yaxis.trend())
 

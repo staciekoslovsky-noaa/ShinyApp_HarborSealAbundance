@@ -1,5 +1,5 @@
 ## Define UI -----------------------------------------
-ui <- fluidPage(
+ui <- shiny::fluidPage(
   theme = shinytheme("superhero"),
 
   # Hide warnings and errors within the app
