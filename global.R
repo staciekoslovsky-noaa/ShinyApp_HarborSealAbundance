@@ -2,7 +2,10 @@
 library(tidyverse)
 library(shiny)
 library(shinythemes)
+library(shinydashboard)
 library(shinyWidgets)
+library(shinyjs)
+library(shinyBS)
 library(leaflet)
 library(leaflet.extras)
 library(leaflet.extras2)
@@ -367,6 +370,7 @@ trend_prop_stock <- load_rdata(url.trend_prop_stock)
 url.trend_prop_polyid <- "C://smk/HarborSealApp/4app/trend_prop_polyid.rda"
 trend_prop_polyid <- load_rdata(url.trend_prop_polyid)
 
+message("All data loaded into memory")
 
 rm(
   url.poly_metadata,
@@ -402,32 +406,7 @@ survey_polygons$centroid.y <- st_coordinates(sf::st_centroid(survey_polygons))[,
 # Move stock polygons across dateline
 stock_polygons$geometry <- (sf::st_geometry(stock_polygons) + c(360, 90)) %%
   c(360) -
-  c(0, 90) # No longer working with new exports from the DB (might be an issue in the geojson itself)
-
-# Code from Allison for moving stock polygons...test only if needed
-
-# for(j in 1:length(stock_polygons@polygons)){
-#   for(k in 1:length(stock_polygons@polygons[[j]]@Polygons)){
-#     #Move the polygons (besides the Aleutians)
-#     for (i in 1:length(stock_polygons@polygons[[j]]@Polygons[[k]]@coords[,1])){
-#       if (stock_polygons@polygons[[j]]@Polygons[[k]]@coords[i, 1] < 0){
-#         stock_polygons@polygons[[j]]@Polygons[[k]]@coords[i, 1] <- stock_polygons@polygons[[j]]@Polygons[[k]]@coords[i, 1] + 360
-#         #if the polygon's longitude is below 0, add 360 degrees to it to move it across the map
-#       }
-#     }
-#     #Append values of the centroids to a list for future use
-#     if(stock_polygons@polygons[[j]]@Polygons[[k]]@labpt[1] < 0){
-#       #Move centroids 360 degrees again
-#       x_stocks <- append(x_stocks, stock_polygons@polygons[[j]]@Polygons[[k]]@labpt[1] + 360)
-#       #Move centroids across the map as well
-#       stock_polygons@polygons[[j]]@Polygons[[k]]@labpt[1] <- stock_polygons@polygons[[j]]@Polygons[[k]]@labpt[1] + 360
-#     }
-#     else{
-#       x_stocks <- append(x_stocks, stock_polygons@polygons[[j]]@Polygons[[k]]@labpt[1])
-#     }
-#     y_stocks <- append(y_stocks, stock_polygons@polygons[[j]]@Polygons[[k]]@labpt[2])
-#   }
-# }
+  c(0, 90) # No longer working with new exports from the DB (might be an issue in the geojson itself -- ues, that's the problem)
 
 # Move haulout points across dateline
 haulout$geometry <- (sf::st_geometry(haulout) + c(360, 90)) %% c(360) - c(0, 90)
@@ -481,9 +460,11 @@ survey_polygons <- survey_polygons %>%
         )
       ),
       "The counts for harbor seals in survey units at Iliamna Lake are analyzed in a process separate from the rest of survey area. More information can be found
-                             in the resources provided in Data Access section."
+      in the resources provided in Data Access section."
     )
   )
+
+message("survey_polygons dataset created")
 
 # Create default abundance and trend datasets for app --------------------------------------
 abundance <- calculate_abundance(
@@ -523,6 +504,8 @@ trend <-
       mutate(trend_type = "prop_polyid")
   )
 
+message("abundance and trend layers are created")
+
 ## Prepare information for ShinyApp -----------------------------------------
 
 # Initialize the map
@@ -534,12 +517,12 @@ map <- survey_polygons %>%
 
 # Initialize informational windows
 introduction <- paste(
-  "This application allows users to explore over 20 years of harbor seal population abundance and trend information within Alaska. Harbor seals are 
-  found throughout much of Alaska's near-coastal marine waters and are an important indicator of healthy ecosystems. The Alaska Fisheries Science Center 
-  (AFSC) has conducted aerial surveys for harbor seals in Alaska nearly every year since 1998. These aerial survey counts along with statistical modeling that accounts 
-  for population dynamics and the proportion of seals in the water during surveys allows for estimates of abundance and trend across different spatial and temporal scales. 
+  "This application allows users to explore over 20 years of harbor seal population abundance and trend information within Alaska. Harbor seals are
+  found throughout much of Alaska's near-coastal marine waters and are an important indicator of healthy ecosystems. The Alaska Fisheries Science Center
+  (AFSC) has conducted aerial surveys for harbor seals in Alaska nearly every year since 1998. These aerial survey counts along with statistical modeling that accounts
+  for population dynamics and the proportion of seals in the water during surveys allows for estimates of abundance and trend across different spatial and temporal scales.
+
   
-  <br/><br/>
   More information about our harbor seal research can be found ",
   a(
     "here",
@@ -549,43 +532,43 @@ introduction <- paste(
   sep = ""
 )
 
-instructions <- "This map displays polygons that represent survey units of harbor seals in Alaska, symbolized based on the most recent abundance estimates; polygons with larger seal 
-  populations are both darker in color and less transparent. Hover over the survey unit polygon for more specific information about that particular site. The larger gray polygons represent 
+instructions <- "This map displays polygons that represent survey units of harbor seals in Alaska, symbolized based on the most recent abundance estimates; polygons with larger seal
+  populations are both darker in color and less transparent. Hover over the survey unit polygon for more specific information about that particular site. The larger gray polygons represent
   each harbor seal stock. Hover over the stock polygon to get the name of the stock.
+
   
-  <br/><br/>
-  Two figures represent summary information for the survey units shown in the map. The figures represent summary information for all the survey units, until a filter is applied. 
-  <ui><li>The <u><b>Abundance</b></u> figure displays the total harbor seal abundance, the 95th percentile confidence interval, and the associated survey effort for all or the filtered survey units. 
-  </li><li>The <u><b>Trend</b></u> plot displays a predicted trend, the 95th percentile confidence interval, and the associated survey effort for all or the filtered survey units. The user can specify 
-  the number of years of abundance data and thee type of abundance data (estimates or log of estimates) on which the trend should be calculated. 
+  Two figures represent summary information for the survey units shown in the map. The figures represent summary information for all the survey units, until a filter is applied.
+  <ui><li>The <u><b>Abundance</b></u> figure displays the total harbor seal abundance, the 95th percentile confidence interval, and the associated survey effort for all or the filtered survey units.
+  </li><li>The <u><b>Trend</b></u> plot displays a predicted trend, the 95th percentile confidence interval, and the associated survey effort for all or the filtered survey units. The user can specify
+  the number of years of abundance data and thee type of abundance data (estimates or log of estimates) on which the trend should be calculated.
+
   
-  <br/><br/>
   Survey units (polygons) can be selected dynamically within the map, and the associated figures are updated dynamically when you click the \"Update Plot\"
-  button after making the filter selection. Filter options are as follows:<br/>
+  button after making the filter selection. Filter options are as follows:
   <ui><li><u><b>By Stock</b></u> - use the drop-down menu to filter the data by harbor seal stock.
   </li><li><u><b>By Survey Unit</b></u> - click on a single survey unit (polygon) within the map.
-  </li><li><u><b>By Custom Polygon</b></u> - use the pentagon button in the map to start drawing a user-defined custom polygon. Use the trash can button in the map to delete your custom polygon. 
+  </li><li><u><b>By Custom Polygon</b></u> - use the pentagon button in the map to start drawing a user-defined custom polygon. Use the trash can button in the map to delete your custom polygon.
   Only one polygon can be drawn at a time. The centroid of each survey unit must be encompassed within the drawn shape in order for it to be included in the filter.
-  </li><li><u><b>By Custom Circle</b></u> - use the circle button in the map to start drawing a circle at the starting point of interest. As the circle size changes, the radius of the circle 
+  </li><li><u><b>By Custom Circle</b></u> - use the circle button in the map to start drawing a circle at the starting point of interest. As the circle size changes, the radius of the circle
   is displayed."
 
-disclaimer <- "This is a prototype application. While the best efforts have been made to insure the highest quality, tools such as this are under constant development and are 
-  subject to change. This application is developed and maintained by scientists at the NOAA Fisheries Alaska Fisheries Science Center and should not be construed as official 
-  communication of NMFS, NOAA, or the U.S. Dept. of Commerce. Links and mentions of RStudio and Shiny should not be considered an endorsement by NOAA Fisheries or the U.S. 
+disclaimer <- "This is a prototype application. While the best efforts have been made to insure the highest quality, tools such as this are under constant development and are
+  subject to change. This application is developed and maintained by scientists at the NOAA Fisheries Alaska Fisheries Science Center and should not be construed as official
+  communication of NMFS, NOAA, or the U.S. Dept. of Commerce. Links and mentions of RStudio and Shiny should not be considered an endorsement by NOAA Fisheries or the U.S.
   Federal Government."
 
-contact_info <- "This application was developed by Allison James as part of a summer 2022 internship, jointly sponsored by UW CICOES and NOAA Fisheries. 
-  
-  <br/> <br/> 
-  The application is maintained by Stacie Koslovsky (stacie.koslovsky@noaa.gov). 
-  
-  <br/> <br/> 
-  For questions regarding the harbor seal aerial survey project, contact Josh London (josh.london@noaa.gov), and 
+contact_info <- "This application was developed by Allison James as part of a summer 2022 internship, jointly sponsored by UW CICOES and NOAA Fisheries.
+
+   
+  The application is maintained by Stacie Koslovsky (stacie.koslovsky@noaa.gov).
+
+   
+  For questions regarding the harbor seal aerial survey project, contact Josh London (josh.london@noaa.gov), and
   for questions regarding the statistical methods used to calculate the harbor seal abundance estimates, contact Brett McClintock (brett.mcclintock@noaa.gov)."
 
 data_access <- paste(
-  "The data we are using to power this application are publicly available for viewing and download. Links to each of these datasets are below: <br/>
-  
+  "The data we are using to power this application are publicly available for viewing and download. Links to each of these datasets are below: 
+
   <ui><li>",
   a(
     "Alaska Harbor Seal Aerial Survey Units",
@@ -601,7 +584,7 @@ data_access <- paste(
     "Alaska Harbor Seal Haul-Out Locations",
     href = "https://www.arcgis.com/home/item.html?id=2c6ca3e595024d3990127bfe061d7ed3"
   ),
-  '<br/> <br/> For more information about abundance estimates for the Iliamna Lake survey units, please refer to the following resources:',
+  '  For more information about abundance estimates for the Iliamna Lake survey units, please refer to the following resources:',
   "</li><li>",
   a(
     "2018 Boveng et al. report",
