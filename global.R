@@ -324,27 +324,25 @@ get_opacity <- function(x, bins) {
   return(opacity_vector)
 }
 
-## Get data from GitHub -----------------------------------------
+## Load data -----------------------------------------
 # Stock polygons
-url.stocks <- "https://raw.githubusercontent.com/staciekoslovsky-noaa/ShinyApp_HarborSealAbundance/main/Data/survey_stocks.geojson"
+url.stocks <- "/Data/survey_stocks.geojson"
 stock_polygons <- geojsonio::geojson_read(url.stocks, what = "sp") %>%
   sf::st_as_sf(crs = 4326)
 
 # Haulout locations
-url.haulout <- "https://raw.githubusercontent.com/staciekoslovsky-noaa/ShinyApp_HarborSealAbundance/main/Data/survey_haulout.geojson"
+url.haulout <- "/Data/survey_haulout.geojson"
 haulout <- geojsonio::geojson_read(url.haulout, what = "sp") %>%
   sf::st_as_sf(crs = 4326)
 
 # Poly metadata and last surveyed
-url.poly_metadata <- "https://raw.githubusercontent.com/staciekoslovsky-noaa/ShinyApp_HarborSealAbundance/main/Data/poly_metadata.rda?raw-true"
-load(url(url.poly_metadata))
+load("../Data/poly_metadata.rda")
 
-url.last_surveyed <- "https://raw.githubusercontent.com/staciekoslovsky-noaa/ShinyApp_HarborSealAbundance/main/Data/last_surveyed.rda?raw-true"
-load(url(url.last_surveyed))
+url.last_surveyed <- "Data/last_surveyed.rda"
+load("Data/last_surveyed.rda")
 
 # Abundance data cube
-url.data_cube <- "C://smk/HarborSealApp/4app/data_cube.rda"
-data_cube <- load_rdata(url.data_cube)
+load("C://smk/HarborSealApp/4app/data_cube.rda")
 
 # Survey polygons with most recent abundance estimates
 url.survey_polygons <- "C://smk/HarborSealApp/4app/survey_polygons.geojson"
