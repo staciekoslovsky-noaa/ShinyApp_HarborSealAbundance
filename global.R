@@ -45,138 +45,139 @@ calculate_ci <- function(subset, ci_type, group_by_ci, select_ci, num_samples) {
     )
 }
 
-# Function to process data cube to desired output
+
 calculate_abundance <- function(
-  data_cube,
-  subset_type,
+  data_cube, 
+  subset_type, 
   group_by_var,
   most_recent_year = NULL,
   poly_metadata = NULL,
   filter = NULL
 ) {
-  # Filter data for the abundance/trend estimates
-  if (subset_type == "most_recent") {
-    subset <- data_cube %>%
-      filter(year == most_recent_year)
+    if (subset_type == "most_recent") {
+      subset <- data_cube %>%
+        filter(year == most_recent_year)
+
+      num_samples <- max(as.numeric(data_cube$cube)) + 1
+
+      polys <- unique(subset$polyid)
+
+      subset <- subset %>%
+        group_by_at(group_by_var) %>%
+        summarise(abund = sum(abund)) %>%
+        ungroup()
+
+      subset_abund_ci <- calculate_ci(
+        subset,
+        ci_type = "abund",
+        group_by_ci = c("polyid", "year"),
+        select_ci = c("cube", "year"),
+        num_samples
+      )
+
+      subset_abund <- subset %>%
+        group_by(polyid) %>%
+        summarise(abund_est = mean(abund)) %>%
+        left_join(subset_abund_ci, by = "polyid")
+
+      subset_summ <- subset_abund # %>%
+      # left_join(subset_trend, by = c("polyid"))
+      
+    } else {
+      if (subset_type == "all") {
+      subset <- data_cube
+      } else if (subset_type == "stock") {
+        subset <- data_cube %>%
+          filter(stockname == filter)
+      } else if (subset_type == "poly_in_list") {
+        subset <- data_cube %>%
+          filter(polyid %in% filter)
+      }
+
+      num_samples <- max(as.numeric(data_cube$cube)) + 1
+
+      polys <- unique(subset$polyid)
+
+      subset_effort <- poly_metadata %>%
+        filter(polyid %in% polys)
+
+      subset_abund_effort <- subset %>%
+        inner_join(subset_effort, by = c("polyid", "year")) %>%
+        group_by_at(group_by_var) %>%
+        summarise(abund = sum(abund)) %>%
+        ungroup() %>%
+        group_by(year) %>%
+        summarise(abund_surveyed = mean(abund))
+
+      subset <- subset %>%
+        group_by_at(group_by_var) %>%
+        summarise(abund = sum(abund)) %>%
+        ungroup()
+
+      subset_abund_ci <- calculate_ci(
+        subset,
+        ci_type = "abund",
+        group_by_ci = c("year"),
+        select_ci = c("cube"),
+        num_samples
+      )
+
+      subset_abund <- subset %>%
+        group_by(year) %>%
+        summarise(abund_est = mean(abund)) %>%
+        left_join(subset_abund_ci, by = "year")
+
+      subset_summ <- subset_abund %>%
+        # left_join(subset_trend, by = "year") %>%
+        left_join(subset_abund_effort, by = c("year")) %>%
+        mutate(
+          abund_surveyed = ifelse(is.na(abund_surveyed), 0, abund_surveyed)
+        ) %>%
+        mutate(effort = round(abund_surveyed * 100 / abund_est, 2))
   }
-  if (subset_type == "all") {
-    subset <- data_cube
-  }
-  if (subset_type == "stock") {
-    subset <- data_cube %>%
-      filter(stockname == filter)
-  }
-  if (subset_type == "poly_in_list") {
-    subset <- data_cube %>%
-      filter(polyid %in% filter)
-  }
-
-  # Calculate # of samples in data
-  num_samples <- max(as.numeric(data_cube$cube)) + 1
-
-  # Create list of polys being processed based on the subset_type
-  polys <- unique(subset$polyid)
-
-  # Create subset of poly_metadata based on the data selected above (for creating surveyed abundance estimate for each year)
-  if (subset_type != "most_recent") {
-    subset_effort <- poly_metadata %>%
-      filter(polyid %in% polys)
-
-    subset_abund_effort <- subset %>%
-      inner_join(subset_effort, by = c("polyid", "year")) %>%
-      group_by_at(group_by_var) %>%
-      summarise(abund = sum(abund)) %>%
-      ungroup() %>%
-      group_by(year) %>%
-      summarise(abund_surveyed = mean(abund))
-  }
-
-  # Create summary dataset
-  subset <- subset %>%
-    group_by_at(group_by_var) %>%
-    summarise(abund = sum(abund)) %>%
-    ungroup()
-
-  if (subset_type == "most_recent") {
-    subset_abund_ci <- calculate_ci(
-      subset,
-      ci_type = "abund",
-      group_by_ci = c("polyid", "year"),
-      select_ci = c("cube", "year"),
-      num_samples
-    )
-
-    subset_abund <- subset %>%
-      group_by(polyid) %>%
-      summarise(abund_est = mean(abund)) %>%
-      left_join(subset_abund_ci, by = "polyid")
-  } else {
-    subset_abund_ci <- calculate_ci(
-      subset,
-      ci_type = "abund",
-      group_by_ci = c("year"),
-      select_ci = c("cube"),
-      num_samples
-    )
-
-    subset_abund <- subset %>%
-      group_by(year) %>%
-      summarise(abund_est = mean(abund)) %>%
-      left_join(subset_abund_ci, by = "year")
-  }
-
-  # Get survey effort data
-  if (subset_type == "most_recent") {
-    subset_summ <- subset_abund # %>%
-    # left_join(subset_trend, by = c("polyid"))
-  } else {
-    subset_summ <- subset_abund %>%
-      # left_join(subset_trend, by = "year") %>%
-      left_join(subset_abund_effort, by = c("year")) %>%
-      mutate(
-        abund_surveyed = ifelse(is.na(abund_surveyed), 0, abund_surveyed)
-      ) %>%
-      mutate(effort = round(abund_surveyed * 100 / abund_est, 2))
-  }
-
   return(subset_summ)
 }
 
-# Function to generate trend matrix (which feeds into calculating trend)
-generate_trend_matrix <- function(trend_type, maxi, trend_length, pop) {
-  trend_matrix <- NULL
-
+generate_trend_matrix_fast <- function(trend_type, maxi, trend_length, pop) {
+  num_windows <- maxi - trend_length + 1
+  num_rows <- nrow(pop)
+  
+  trend_matrix <- matrix(NA_real_, nrow = num_rows, ncol = num_windows)
+  
+  x <- 1:trend_length
+  
   if (trend_type == "linear") {
-    for (i in 1:(maxi - trend_length + 1)) {
-      trend_matrix <- cbind(
-        trend_matrix,
-        apply(pop, 1, function(v) {
-          coef(lm(y ~ x, data.frame(x = 1:8, y = v[i:(i + trend_length - 1)])))[
-            2
-          ]
-        })
-      )
+    x_mean <- mean(x)
+    x_dev <- x - x_mean
+    denom <- sum(x_dev^2)
+    
+    for (i in 1:num_windows) {
+      window_mat <- pop[, i:(i + trend_length - 1), drop = FALSE]
+      
+      trend_matrix[, i] <- (window_mat %*% x_dev) / denom
+    }
+    
+  } else if (trend_type == "proportional") {
+    has_fastglm <- requireNamespace("fastglm", quietly = TRUE)
+    
+    X_design <- cbind(1, x)
+    
+    for (i in 1:num_windows) {
+      window_mat <- pop[, i:(i + trend_length - 1), drop = FALSE]
+      
+      trend_matrix[, i] <- apply(window_mat, 1, function(v) {
+        if (has_fastglm) {
+          fit <- fastglm::fastglm(X_design, v, family = poisson())
+          b1 <- fit$coefficients[2]
+        } else {
+          fit <- glm.fit(X_design, v, family = poisson())
+          b1 <- fit$coefficients[2]
+        }
+        return(100 * (exp(b1) - 1))
+      })
     }
   }
-  if (trend_type == "proportional") {
-    for (i in 1:(maxi - trend_length + 1)) {
-      trend_matrix = cbind(
-        trend_matrix,
-        100 *
-          (exp(apply(pop, 1, function(v) {
-            coef(
-              glm(
-                y ~ x,
-                data = data.frame(x = 1:8, y = v[i:(i + trend_length - 1)]),
-                family = poisson
-              ) # new code from Brett 9/18/2025
-            )[2]
-          })) -
-            1)
-      )
-    }
-  }
-
+  
   return(trend_matrix)
 }
 
@@ -205,7 +206,6 @@ create_trend_table <- function(
   return(trend)
 }
 
-# Function to do all the things that are required to calculate trend
 calculate_trend <- function(
   data_cube_4trend,
   trend_type,
@@ -214,58 +214,59 @@ calculate_trend <- function(
   year_first,
   year_last
 ) {
-  # Define variables
-  n_years <- year_last - year_first + 1
-  num_samples <- length(data_cube_4trend)
-  pop <- matrix(NA, nrow = num_samples, ncol = n_years)
-  maxi <- n_years
-  trend_length <- 8
+    n_years <- year_last - year_first + 1
+    num_samples <- length(data_cube_4trend)
+    pop <- matrix(NA, nrow = num_samples, ncol = n_years)
+    maxi <- n_years
+    trend_length <- 8
 
-  trend <- data.frame(
-    trend_est = numeric(),
-    year = integer(),
-    identifier = character(),
-    trend_b95 = numeric(),
-    trend_t95 = numeric()
-  )
-
-  # Calculate trend for all polys
-  if (group_by == "all") {
-    for (i in 1:num_samples) {
-      pop[i, ] <- apply(data_cube_4trend[[i]][,], 2, sum)
-    }
-    trend_matrix <- generate_trend_matrix(trend_type, maxi, trend_length, pop)
-    trend <- create_trend_table(
-      trend_matrix,
-      year_first,
-      year_last,
-      identifier = 'all'
+    trend <- data.frame(
+      trend_est = numeric(),
+      year = integer(),
+      identifier = character(),
+      trend_b95 = numeric(),
+      trend_t95 = numeric()
     )
-  } else {
-    # Calculate trend by stock and polyid
-    for (g in 1:length(group_list)) {
-      if (group_by == "stock") {
-        for (i in 1:num_samples) {
-          pop[i, ] <- apply(
-            data_cube_4trend[[i]][
-              attr(data_cube_4trend[[i]], 'stockid') == g,
-            ],
-            2,
-            sum
+
+
+    if (group_by == "all") {
+      for (i in 1:num_samples) {
+        pop[i, ] <- apply(data_cube_4trend[[i]][,], 2, sum)
+      }
+      trend_matrix <- generate_trend_matrix(trend_type, maxi, trend_length, pop)
+      trend <- create_trend_table(
+        trend_matrix,
+        year_first,
+        year_last,
+        identifier = 'all'
+      )
+
+      trend <- trend %>%
+        select(year, trend_est, trend_b95, trend_t95)
+    } else {
+      for (g in 1:length(group_list)) {
+        if (group_by == "stock") {
+          for (i in 1:num_samples) {
+            pop[i, ] <- apply(
+              data_cube_4trend[[i]][
+                attr(data_cube_4trend[[i]], 'stockid') == g,
+              ],
+              2,
+              sum
+            )
+          }
+        }
+        if (group_by == "polyid") {
+          print(g)
+          pop <- matrix(
+            unlist(lapply(data_cube_4trend, function(x) {
+              x[group_list[g], ]
+            })),
+            nrow = num_samples,
+            ncol = n_years
           )
         }
       }
-      if (group_by == "polyid") {
-        print(g)
-        pop <- matrix(
-          unlist(lapply(data_cube_4trend, function(x) {
-            x[group_list[g], ]
-          })),
-          nrow = num_samples,
-          ncol = n_years
-        )
-      }
-
       trend_matrix <- generate_trend_matrix(trend_type, maxi, trend_length, pop)
       trend_temp <- create_trend_table(
         trend_matrix,
@@ -276,26 +277,19 @@ calculate_trend <- function(
 
       trend <- trend %>%
         rbind(trend_temp)
+
+      if (group_by == "stock") {
+        trend <- trend %>%
+          rename(stockname = identifier) %>%
+          select(stockname, year, trend_est, trend_b95, trend_t95)
+      }
+      if (group_by == "polyid") {
+        trend <- trend %>%
+          rename(polyid = identifier) %>%
+          select(polyid, year, trend_est, trend_b95, trend_t95)
+      }
     }
-  }
-
-  # Clean up trend table for use in app
-  if (group_by == "all") {
-    trend <- trend %>%
-      select(year, trend_est, trend_b95, trend_t95)
-  }
-  if (group_by == "stock") {
-    trend <- trend %>%
-      rename(stockname = identifier) %>%
-      select(stockname, year, trend_est, trend_b95, trend_t95)
-  }
-  if (group_by == "polyid") {
-    trend <- trend %>%
-      rename(polyid = identifier) %>%
-      select(polyid, year, trend_est, trend_b95, trend_t95)
-  }
-
-  return(trend)
+    return(trend)
 }
 
 # Function to assign opacity values to polygons based on abundance
@@ -325,93 +319,48 @@ get_opacity <- function(x, bins) {
 }
 
 ## Load data -----------------------------------------
-# Stock polygons
-url.stocks <- "/Data/survey_stocks.geojson"
-stock_polygons <- geojsonio::geojson_read(url.stocks, what = "sp") %>%
-  sf::st_as_sf(crs = 4326)
+stock_polygons  <- sf::st_read("Data/survey_stocks.geojson", quiet = TRUE) %>% sf::st_transform(4326)
+haulout         <- sf::st_read("Data/survey_haulout.geojson", quiet = TRUE) %>% sf::st_transform(4326)
+survey_polygons <- sf::st_read("4app/survey_polygons.geojson", quiet = TRUE) %>% sf::st_transform(4326)
 
-# Haulout locations
-url.haulout <- "/Data/survey_haulout.geojson"
-haulout <- geojsonio::geojson_read(url.haulout, what = "sp") %>%
-  sf::st_as_sf(crs = 4326)
-
-# Poly metadata and last surveyed
-load("../Data/poly_metadata.rda")
-
-url.last_surveyed <- "Data/last_surveyed.rda"
+# Load metadata/cubes/trends
+load("Data/poly_metadata.rda")
 load("Data/last_surveyed.rda")
+load("4app/data_cube.rda")
 
-# Abundance data cube
-load("C://smk/HarborSealApp/4app/data_cube.rda")
-
-# Survey polygons with most recent abundance estimates
-url.survey_polygons <- "C://smk/HarborSealApp/4app/survey_polygons.geojson"
-survey_polygons <- geojsonio::geojson_read(url.survey_polygons, what = "sp") %>%
-  sf::st_as_sf(crs = 4326)
-
-# Trend data
-url.trend_linear_all <- "C://smk/HarborSealApp/4app/trend_linear_all.rda"
-trend_linear_all <- load_rdata(url.trend_linear_all)
-
-url.trend_linear_stock <- "C://smk/HarborSealApp/4app/trend_linear_stock.rda"
-trend_linear_stock <- load_rdata(url.trend_linear_stock)
-
-url.trend_linear_polyid <- "C://smk/HarborSealApp/4app/trend_linear_polyid.rda"
-trend_linear_polyid <- load_rdata(url.trend_linear_polyid)
-
-url.trend_prop_all <- "C://smk/HarborSealApp/4app/trend_prop_all.rda"
-trend_prop_all <- load_rdata(url.trend_prop_all)
-
-url.trend_prop_stock <- "C://smk/HarborSealApp/4app/trend_prop_stock.rda"
-trend_prop_stock <- load_rdata(url.trend_prop_stock)
-
-url.trend_prop_polyid <- "C://smk/HarborSealApp/4app/trend_prop_polyid.rda"
-trend_prop_polyid <- load_rdata(url.trend_prop_polyid)
+trend_linear_all    <- load_rdata("4app/trend_linear_all.rda")
+trend_linear_stock  <- load_rdata("4app/trend_linear_stock.rda")
+trend_linear_polyid <- load_rdata("4app/trend_linear_polyid.rda")
+trend_prop_all      <- load_rdata("4app/trend_prop_all.rda")
+trend_prop_stock    <- load_rdata("4app/trend_prop_stock.rda")
+trend_prop_polyid   <- load_rdata("4app/trend_prop_polyid.rda")
 
 message("All data loaded into memory")
 
-rm(
-  url.poly_metadata,
-  url.last_surveyed,
-  url.data_cube,
-  url.survey_polygons,
-  url.stocks,
-  url.haulout,
-  url.trend_linear_all,
-  url.trend_linear_stock,
-  url.trend_linear_polyid,
-  url.trend_prop_all,
-  url.trend_prop_stock,
-  url.trend_prop_polyid
-)
-
-## Prepare survey_polygons and stock_polygons for map -----------------------------------------
-# Get most_recent_year for data
+## Prepare geometries -----------------------------------------
 most_recent_year <- max(data_cube$year)
 
-## Move the polygons across the dateline so the Aleutians are not separated and calculate the midpoint of polygons to set the view of the map
-# Move survey polygons and across dateline
-survey_polygons$geometry <- (sf::st_geometry(survey_polygons) + c(360, 90)) %%
-  c(360) -
-  c(0, 90)
-survey_polygons$centroid.x <- st_coordinates(sf::st_centroid(survey_polygons))[,
-  1
-]
-survey_polygons$centroid.y <- st_coordinates(sf::st_centroid(survey_polygons))[,
-  2
-]
+# 2. Shift longitudes cleanly using native sf objects
+survey_polygons <- sf::st_shift_longitude(survey_polygons)
+stock_polygons  <- sf::st_shift_longitude(stock_polygons)
+haulout         <- sf::st_shift_longitude(haulout)
 
-# Move stock polygons across dateline
-stock_polygons$geometry <- (sf::st_geometry(stock_polygons) + c(360, 90)) %%
-  c(360) -
-  c(0, 90) # No longer working with new exports from the DB (might be an issue in the geojson itself -- ues, that's the problem)
+# 3. Calculate Centroids Safely
+centroids <- sf::st_coordinates(sf::st_centroid(survey_polygons))
+survey_polygons$centroid.x <- centroids[, 1]
+survey_polygons$centroid.y <- centroids[, 2]
 
-# Move haulout points across dateline
-haulout$geometry <- (sf::st_geometry(haulout) + c(360, 90)) %% c(360) - c(0, 90)
+# 4. Extract Bounding Box and provide a Fail-Safe for Leaflet Center
+bbox <- sf::st_bbox(survey_polygons)
 
-# Calculate the center point of the centroids (x and y)
-mean_x = (max(survey_polygons$centroid.x) + min(survey_polygons$centroid.x)) / 2
-mean_y = (max(survey_polygons$centroid.y) + min(survey_polygons$centroid.y)) / 2
+if (any(is.na(bbox)) || length(bbox) == 0) {
+  # Default fallback map center if data happens to load completely empty
+  mean_x <- 180 
+  mean_y <- 60
+} else {
+  mean_x <- as.numeric((bbox["xmax"] + bbox["xmin"]) / 2)
+  mean_y <- as.numeric((bbox["ymax"] + bbox["ymin"]) / 2)
+}
 
 # Create field to store information provided in popup for survey_polygons
 survey_polygons <- survey_polygons %>%
@@ -514,7 +463,7 @@ map <- survey_polygons %>%
   addTiles()
 
 # Initialize informational windows
-introduction <- paste(
+introduction <- div(p(
   "This application allows users to explore over 20 years of harbor seal population abundance and trend information within Alaska. Harbor seals are
   found throughout much of Alaska's near-coastal marine waters and are an important indicator of healthy ecosystems. The Alaska Fisheries Science Center
   (AFSC) has conducted aerial surveys for harbor seals in Alaska nearly every year since 1998. These aerial survey counts along with statistical modeling that accounts
@@ -526,72 +475,78 @@ introduction <- paste(
     "here",
     href = "https://www.fisheries.noaa.gov/alaska/marine-mammal-protection/harbor-seal-research-alaska"
   ),
-  ".",
-  sep = ""
-)
+  "."
+))
 
-instructions <- "This map displays polygons that represent survey units of harbor seals in Alaska, symbolized based on the most recent abundance estimates; polygons with larger seal
+instructions <- div(p("This map displays polygons that represent survey units of harbor seals in Alaska, symbolized based on the most recent abundance estimates; polygons with larger seal
   populations are both darker in color and less transparent. Hover over the survey unit polygon for more specific information about that particular site. The larger gray polygons represent
   each harbor seal stock. Hover over the stock polygon to get the name of the stock.
 
   
-  Two figures represent summary information for the survey units shown in the map. The figures represent summary information for all the survey units, until a filter is applied.
-  <ui><li>The <u><b>Abundance</b></u> figure displays the total harbor seal abundance, the 95th percentile confidence interval, and the associated survey effort for all or the filtered survey units.
-  </li><li>The <u><b>Trend</b></u> plot displays a predicted trend, the 95th percentile confidence interval, and the associated survey effort for all or the filtered survey units. The user can specify
-  the number of years of abundance data and thee type of abundance data (estimates or log of estimates) on which the trend should be calculated.
-
+  Two figures represent summary information for the survey units shown in the map. The figures represent summary information for all the survey units, until a filter is applied.",
+  tags$ul(
+    tags$li("The ", strong("Abundance"), " figure displays the total harbor seal abundance, the 95th percentile confidence interval, and the associated survey effort for all or the filtered survey units."),
+    tags$li("The", strong("Trend"), " plot displays a predicted trend, the 95th percentile confidence interval, and the associated survey effort for all or the filtered survey units. The user can specify
+            the number of years of abundance data and thee type of abundance data (estimates or log of estimates) on which the trend should be calculated.
+            ")
+  ),
   
-  Survey units (polygons) can be selected dynamically within the map, and the associated figures are updated dynamically when you click the \"Update Plot\"
-  button after making the filter selection. Filter options are as follows:
-  <ui><li><u><b>By Stock</b></u> - use the drop-down menu to filter the data by harbor seal stock.
-  </li><li><u><b>By Survey Unit</b></u> - click on a single survey unit (polygon) within the map.
-  </li><li><u><b>By Custom Polygon</b></u> - use the pentagon button in the map to start drawing a user-defined custom polygon. Use the trash can button in the map to delete your custom polygon.
-  Only one polygon can be drawn at a time. The centroid of each survey unit must be encompassed within the drawn shape in order for it to be included in the filter.
-  </li><li><u><b>By Custom Circle</b></u> - use the circle button in the map to start drawing a circle at the starting point of interest. As the circle size changes, the radius of the circle
-  is displayed."
+  "Survey units (polygons) can be selected dynamically within the map, and the associated figures are updated dynamically when you click the \"Update Plot\"
+  button after making the filter selection. Filter options are as follows:", 
+  tags$ul(
+    tags$li(strong("By Stock"), " - use the drop-down menu to filter the data by harbor seal stock."),
+    tags$li(strong("By Survey Unit"), " - click on a single survey unit (polygon) within the map."),
+    tags$li(strong("By Custom Polygon"), " - use the pentagon button in the map to start drawing a user-defined custom polygon. Use the trash can button in the map to delete your custom polygon.
+            Only one polygon can be drawn at a time. The centroid of each survey unit must be encompassed within the drawn shape in order for it to be included in the filter."),
+    tags$li(strong("By Custom Circle"), " - use the circle button in the map to start drawing a circle at the starting point of interest. As the circle size changes, the radius of the circle
+  is displayed.")
+  )
+))
 
 disclaimer <- "This is a prototype application. While the best efforts have been made to insure the highest quality, tools such as this are under constant development and are
   subject to change. This application is developed and maintained by scientists at the NOAA Fisheries Alaska Fisheries Science Center and should not be construed as official
   communication of NMFS, NOAA, or the U.S. Dept. of Commerce. Links and mentions of RStudio and Shiny should not be considered an endorsement by NOAA Fisheries or the U.S.
   Federal Government."
 
-contact_info <- "This application was developed by Allison James as part of a summer 2022 internship, jointly sponsored by UW CICOES and NOAA Fisheries.
+contact_info <- div(p("This application was developed by Allison James as part of a summer 2022 internship, jointly sponsored by UW CICOES and NOAA Fisheries.", 
+                br(),
+                "The application is maintained by Stacie Koslovsky (stacie.koslovsky@noaa.gov).",
+                br(),
+                "For questions regarding the harbor seal aerial survey project, contact Josh London (josh.london@noaa.gov), and
+                for questions regarding the statistical methods used to calculate the harbor seal abundance estimates, contact Brett McClintock (brett.mcclintock@noaa.gov)."))
 
-   
-  The application is maintained by Stacie Koslovsky (stacie.koslovsky@noaa.gov).
-
-   
-  For questions regarding the harbor seal aerial survey project, contact Josh London (josh.london@noaa.gov), and
-  for questions regarding the statistical methods used to calculate the harbor seal abundance estimates, contact Brett McClintock (brett.mcclintock@noaa.gov)."
-
-data_access <- paste(
-  "The data we are using to power this application are publicly available for viewing and download. Links to each of these datasets are below: 
-
-  <ui><li>",
-  a(
+data_access <- div(p( "The data we are using to power this application are publicly available for viewing and download. Links to each of these datasets are below: ",
+  tags$ul(
+    tags$li(a(
     "Alaska Harbor Seal Aerial Survey Units",
     href = "https://www.arcgis.com/home/item.html?id=c63ccb17b9b144c4a529ee6a3d039665"
+    )),
+    tags$li(
+      a(
+        "Alaska Harbor Seal Abundance",
+        href = "https://www.arcgis.com/home/item.html?id=e69222ad91564422aba9ee0d2e70bfe2"
+      )
+    ),
+    tags$li(
+      a(
+        "Alaska Harbor Seal Haul-Out Locations",
+        href = "https://www.arcgis.com/home/item.html?id=2c6ca3e595024d3990127bfe061d7ed3"
+      )
+    )
   ),
-  "</li><li>",
-  a(
-    "Alaska Harbor Seal Abundance",
-    href = "https://www.arcgis.com/home/item.html?id=e69222ad91564422aba9ee0d2e70bfe2"
-  ),
-  "</li><li>",
-  a(
-    "Alaska Harbor Seal Haul-Out Locations",
-    href = "https://www.arcgis.com/home/item.html?id=2c6ca3e595024d3990127bfe061d7ed3"
-  ),
-  '  For more information about abundance estimates for the Iliamna Lake survey units, please refer to the following resources:',
-  "</li><li>",
-  a(
-    "2018 Boveng et al. report",
-    href = "https://onlinelibrary.wiley.com/doi/full/10.1111/risa.12988"
-  ),
-  "</li><li>",
-  a(
-    "1984-2013 dataset",
-    href = "https://catalog.data.gov/dataset/a-dataset-of-aerial-survey-counts-of-harbor-seals-in-iliamna-lake-alaska-1984-20133"
-  ),
-  sep = ""
-)
+  "For more information about abundance estimates for the Iliamna Lake survey units, please refer to the following resources:",
+  tags$ul(
+    tags$li(
+      a(
+        "2018 Boveng et al. report",
+        href = "https://onlinelibrary.wiley.com/doi/full/10.1111/risa.12988"
+      )
+    ),
+    tags$li(
+       a(
+        "1984-2013 dataset",
+        href = "https://catalog.data.gov/dataset/a-dataset-of-aerial-survey-counts-of-harbor-seals-in-iliamna-lake-alaska-1984-20133"
+      )
+    )
+  )
+))

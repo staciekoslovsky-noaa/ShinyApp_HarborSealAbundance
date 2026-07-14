@@ -111,6 +111,14 @@ server <- function(input, output, session) {
       setView(lng = map.view$values[1], lat = map.view$values[2], zoom = 4)
   })
 
+  updateSelectizeInput(
+    session,
+    inputId = "stock.select",
+    choices = c("All", sort(survey_polygons$stockname)),
+    selected = "All",
+    server = TRUE
+  )
+
   # Reactive dataset and title for abundance plot
   plotted.abundance <- shiny::reactiveValues(values = abundance)
   title.abundance <- shiny::reactiveVal(value = "in All Stocks")
@@ -499,7 +507,7 @@ server <- function(input, output, session) {
       hc_add_series(
         data = abund_subset,
         type = "column",
-        hcaes(x = year, y = effort),
+        hcaes(x = year, y = effort),           
         color = "#855278",
         name = "% of Harbor Seals Surveyed",
         opacity = 0.5,

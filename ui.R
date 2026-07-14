@@ -60,6 +60,7 @@ ui <- shinydashboard::dashboardPage(
       tabItem(
         tabName = 'welcome',
         wellPanel(
+          h2(strong("Welcome"), style = "color: #011f4b"),
           p(introduction),
           p(instructions),
           p(disclaimer)
@@ -70,13 +71,14 @@ ui <- shinydashboard::dashboardPage(
       tabItem(
         tabName = "explore",
         wellPanel(
-          fluidRow(
-            column(12, leafletOutput(outputId = "map1"))
-          ),
-          br(),
+          # Top Row: Map on the Left, Controls on the Right
           fluidRow(
             column(
-              4,
+              8,
+              leafletOutput(outputId = "map1")
+            ),
+            column(
+              width = 4,
               selectizeInput(
                 "trend.type",
                 "Trend Type",
@@ -86,30 +88,27 @@ ui <- shinydashboard::dashboardPage(
               selectizeInput(
                 "filter",
                 "Filter Data By",
-                choices = c(
-                  "Stock",
-                  "Survey Unit",
-                  "Custom Polygon",
-                  "Custom Circle",
-                  "Glacial Sites"
-                ),
+                choices = c("Stock", "Survey Unit", "Custom Polygon", "Custom Circle", "Glacial Sites"),
                 selected = "Stock"
               ),
               selectizeInput(
                 "stock.select",
                 "Select Stock (if applicable)",
-                choices = c("All", sort(survey_polygons$stockname)),
+                choices = NULL,
                 selected = "All"
               ),
-              actionButton("update", "Update Plot"),
+              br(),
+              actionButton("update", "Update Plot", class = "btn-primary"), # Optional: adds bootstrap color
               actionButton("default", "Reset")
-            ), 
+            )
+          ),
+          fluidRow(
             column(
-              8,
+              width = 12,
               tabsetPanel(
+                type = "pills",
                 tabPanel("Abundance", highchartOutput(outputId = "plot1")),
-                tabPanel("Trend", highchartOutput(outputId = "plot2")),
-                type = "pills"
+                tabPanel("Trend", highchartOutput(outputId = "plot2"))
               )
             )
           )
