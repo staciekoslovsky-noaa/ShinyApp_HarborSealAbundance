@@ -474,17 +474,17 @@ server <- function(input, output, session) {
       hc_xAxis(
         title = list(
           text = "Year",
-          style = list(color = "#FFFFFF", fontSize = "16px")
+          style = list(color = "#111111", fontSize = "16px")
         ),
-        labels = list(style = list(color = "#FFFFFF"))
+        labels = list(style = list(color = "#111111"))
       ) %>%
       hc_yAxis_multiples(
         list(
           title = list(
             text = "# of Harbor Seals",
-            style = list(color = "#FFFFFF", fontSize = "16px")
+            style = list(color = "#111111", fontSize = "16px")
           ),
-          labels = list(format = '{value}', style = list(color = "#FFFFFF")),
+          labels = list(format = '{value}', style = list(color = "#111111")),
           min = min(abund_subset$abund_b95),
           max = max(abund_subset$abund_t95),
           showFirstLabel = TRUE,
@@ -494,11 +494,11 @@ server <- function(input, output, session) {
         list(
           title = list(
             text = "% of Harbor Seals Surveyed",
-            style = list(color = "#FFFFFF", fontSize = "16px")
+            style = list(color = "#111111", fontSize = "16px")
           ),
           min = 0,
           max = 100,
-          labels = list(format = "{value}%", style = list(color = "#FFFFFF")),
+          labels = list(format = "{value}%", style = list(color = "#111111")),
           showLastLabel = TRUE,
           opposite = TRUE
         )
@@ -534,9 +534,9 @@ server <- function(input, output, session) {
           "Estimated Harbor Seal Abundance by Year",
           title.abundance()
         ),
-        style = list(color = "#FFFFFF")
+        style = list(color = "#111111")
       ) %>%
-      hc_legend(itemStyle = list(color = "#FFFFFF"))
+      hc_legend(itemStyle = list(color = "#111111"))
   })
 
   #Plot for trend
@@ -548,16 +548,16 @@ server <- function(input, output, session) {
       hc_xAxis(
         title = list(
           text = "Year",
-          style = list(color = "#FFFFFF", fontSize = "16px")
+          style = list(color = "#111111", fontSize = "16px")
         ),
-        labels = list(style = list(color = "#FFFFFF"))
+        labels = list(style = list(color = "#111111"))
       ) %>%
       hc_yAxis(
         title = list(
           text = yaxis.trend(),
-          style = list(color = "#FFFFFF", fontSize = "16px")
+          style = list(color = "#111111", fontSize = "16px")
         ),
-        labels = list(format = '{value}', style = list(color = "#FFFFFF")),
+        labels = list(format = '{value}', style = list(color = "#111111")),
         min = min(trend_subset$trend_b95),
         max = max(trend_subset$trend_t95),
         showFirstLabel = TRUE,
@@ -589,8 +589,8 @@ server <- function(input, output, session) {
           title.trend(),
           sep = ""
         ),
-        style = list(color = "#FFFFFF")
+        style = list(color = "#111111")
       ) %>%
-      hc_legend(itemStyle = list(color = "#FFFFFF"))
+      hc_legend(itemStyle = list(color = "#111111"))
   })
 }
