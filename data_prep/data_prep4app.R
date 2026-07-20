@@ -4,13 +4,15 @@
 source(
   "C:\\Users\\Stacie.Hardy\\Work\\SMK\\GitHub\\ShinyApp_HarborSealAbundance\\app\\functions.R"
 )
-install_pkg("tidyverse")
-install_pkg("RPostgreSQL")
-install_pkg("sf")
-install_pkg("rmapshaper")
+library("tidyverse")
+library("RPostgreSQL")
+library("sf")
 
 ## Process data ---------------------------------------------
-setwd("C:/Users/Stacie.Hardy/Work/SMK/GitHub/ShinyApp_HarborSealAbundance/data")
+setwd(
+  "C:/Users/Stacie.Hardy/Work/SMK/GitHub/ShinyApp_HarborSealAbundance/app/data"
+)
+sf::sf_use_s2(FALSE)
 
 # Connect to DB and get starting data
 con <- RPostgreSQL::dbConnect(
@@ -29,12 +31,12 @@ stock_polygons <- sf::st_read(
 ) %>%
   sf::st_transform(4326) %>%
   sf::st_shift_longitude() %>%
-  ms_simplify(keep = 0.10, keep_shapes = TRUE)
+  sf::st_simplify()
 
-# EXPORT stock_polygons (CHANGE MAPPING LOCATION ONCE APP IS SHAREABLE)
+# EXPORT stock_polygons
 saveRDS(
   stock_polygons,
-  file = "C:/Users/Stacie.Hardy/Work/SMK/GitHub/ShinyApp_HarborSealAbundance/not_to_share/4app/stock_polygons.rds"
+  file = "stock_polygons.rds"
 )
 
 # CREATE haulout ~~~~~~~~~~~~~~~~~~~
@@ -47,11 +49,10 @@ haulout <- sf::st_read(
   sf::st_transform(4326) %>%
   sf::st_shift_longitude()
 
-
-# EXPORT haulout (CHANGE MAPPING LOCATION ONCE APP IS SHAREABLE)
+# EXPORT haulout
 saveRDS(
   haulout,
-  file = "C:/Users/Stacie.Hardy/Work/SMK/GitHub/ShinyApp_HarborSealAbundance/not_to_share/4app/survey_haulout.rds"
+  file = "survey_haulout.rds"
 )
 
 # Create poly_metadata and last_surveyed ~~~~~~~~~~~~~~~~~~~
@@ -79,8 +80,9 @@ survey_polygons <- sf::st_read(
   query = "SELECT * FROM surv_pv_cst.geo_polys",
   geometry_column = "geom"
 ) %>%
+  sf::st_transform(3338) %>%
+  sf::st_simplify() %>%
   sf::st_as_sf(crs = 4326) %>%
-  rmapshaper::ms_simplify(keep = 0.10, keep_shapes = TRUE) %>%
   select(
     -stockid,
     -trendpoly,
@@ -136,38 +138,41 @@ year_last <- max(data_cube$year)
 
 # CREATE trend for p(increase|decrease)
 n_years <- year_last - year_first + 1
-pop <- matrix(NA, nrow = 1000, ncol = n_years)
+n_sims <- length(data_cube_4trend)
+pop <- matrix(NA, nrow = n_sims, ncol = n_years)
 maxi <- n_years
 trend_length <- 8
 
-trend_p_positive <- data.frame(polyid = character(), p_positive = numeric())
+p_positive <- numeric(length(data_cube_polys))
 
-for (p in 1:length(data_cube_polys)) {
-  # takes 4-5 hours to run
+for (p in seq_along(data_cube_polys)) {
   print(p)
-  pop <- matrix(
-    unlist(lapply(data_cube_4trend, function(x) {
-      x[data_cube_polys[p], ]
-    })),
-    nrow = 1000,
-    ncol = n_years
+
+  pop <- vapply(
+    data_cube_4trend,
+    function(x) x[data_cube_polys[p], ],
+    numeric(n_years)
   )
+
+  pop <- t(pop) # rows = simulations, cols = years
+
   trend_matrix <- generate_trend_matrix(
     trend_type = "linear",
-    maxi,
-    trend_length,
-    pop
+    maxi = maxi,
+    trend_length = trend_length,
+    pop = pop
   )
 
-  trend_p_temp <- data.frame(last_trend = trend_matrix[, 20]) %>%
-    filter(last_trend >= 0) %>%
-    count() %>%
-    mutate(polyid = data_cube_polys[p], p_positive = n / 1000) %>%
-    select(-n)
-
-  trend_p_positive <- trend_p_positive %>%
-    rbind(trend_p_temp)
+  p_positive[p] <- mean(trend_matrix[, 20] >= 0, na.rm = TRUE)
 }
+
+trend_p_positive <- data.frame(
+  polyid = data_cube_polys,
+  p_positive = p_positive
+)
+
+rm(data_cube_polys, maxi, n_years, pop, trend_length, p, trend_matrix)
+
 
 # EXPORT trend_linear_all
 trend_linear_all <- calculate_trend(
