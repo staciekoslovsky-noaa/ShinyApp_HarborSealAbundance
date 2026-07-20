@@ -26,7 +26,10 @@ stock_polygons <- sf::st_read(
   con,
   query = "SELECT * FROM stock.geo_dist_pv",
   geometry_column = "geom"
-)
+) %>%
+  sf::st_transform(4326) %>%
+  sf::st_shift_longitude()
+
 # EXPORT stock_polygons
 geojsonio::geojson_write(
   stock_polygons,
@@ -40,11 +43,14 @@ haulout <- sf::st_read(
   query = "SELECT * FROM surv_pv_cst.geo_haulout_20220414",
   geometry_column = "geom"
 ) %>%
-  select(name)
+  select(name) %>%
+  sf::st_transform(4326) %>%
+  sf::st_shift_longitude()
+
 # EXPORT haulout
 geojsonio::geojson_write(
   haulout,
-  geometry = "polygon",
+  geometry = "point",
   file = "survey_haulout.geojson"
 )
 
@@ -253,6 +259,54 @@ save(
   file = "C:/Users/Stacie.Hardy/Work/SMK/GitHub/ShinyApp_HarborSealAbundance/not_to_share/4app/trend_prop_polyid.rda"
 ) # Update to wd folder once data are shareable
 
+# CREATE default abundance dataset ~~~~~~~~~~~~~~~~~~~
+abundance <- calculate_abundance(
+  data_cube = data_cube,
+  group_by_var = c('cube', 'year'),
+  subset_type = 'all',
+  poly_metadata = poly_metadata
+)
+save(
+  abundance,
+  file = "C:/Users/Stacie.Hardy/Work/SMK/GitHub/ShinyApp_HarborSealAbundance/not_to_share/4app/default_abundance.rda"
+) # Update to wd folder once data are shareable
+
+
+# CREATE default trend dataset ~~~~~~~~~~~~~~~~~~~
+trend <-
+  (trend_linear_all %>%
+    mutate(identifier = "all") %>%
+    mutate(trend_type = "linear_all")) %>%
+  rbind(
+    trend_linear_stock %>%
+      rename(identifier = stockname) %>%
+      mutate(trend_type = "linear_stock")
+  ) %>%
+  rbind(
+    trend_linear_polyid %>%
+      rename(identifier = polyid) %>%
+      mutate(trend_type = "linear_polyid")
+  ) %>%
+  rbind(
+    trend_prop_all %>%
+      mutate(identifier = "all") %>%
+      mutate(trend_type = "prop_all")
+  ) %>%
+  rbind(
+    trend_prop_stock %>%
+      rename(identifier = stockname) %>%
+      mutate(trend_type = "prop_stock")
+  ) %>%
+  rbind(
+    trend_prop_polyid %>%
+      rename(identifier = polyid) %>%
+      mutate(trend_type = "prop_polyid")
+  )
+save(
+  trend,
+  file = "C:/Users/Stacie.Hardy/Work/SMK/GitHub/ShinyApp_HarborSealAbundance/not_to_share/4app/default_trend.rda"
+) # Update to wd folder once data are shareable
+
 
 # CREATE survey_polygons (with most recent abundance + trend) ~~~~~~~~~~~~~~~~~~~
 
@@ -299,6 +353,62 @@ survey_polygons <- survey_polygons %>%
     glacier_name,
     p_positive,
     geom
+  ) %>%
+  sf::st_transform(4326) %>%
+  sf::st_shift_longitude() %>%
+  mutate(p_positive = as.numeric(ifelse(is.na(p_positive), 0, p_positive))) %>%
+  mutate(
+    popup_text = ifelse(
+      is.na(iliamna), # change to iliamna == 'N' after next running of PrepData4App
+      ifelse(
+        abund_est == 0,
+        paste0(
+          "You have selected survey unit ",
+          polyid,
+          ", found in the ",
+          stockname,
+          " stock. Harbor seals have not been observed in this survey unit. ",
+          survey_date
+        ),
+        paste0(
+          "You have selected survey unit ",
+          polyid,
+          ", found in the ",
+          stockname,
+          " stock. In ",
+          most_recent_year,
+          ", the harbor seal abundance estimate for this survey unit was ",
+          round(abund_est, 2),
+          " with a confidence interval of ",
+          round(abund_b95, 2),
+          "-",
+          round(abund_t95, 2),
+          ". The current 8-year trend in harbor seal abundance was based on abundance estimates from ",
+          most_recent_year - 8,
+          "-",
+          most_recent_year,
+          " and was estimated as ",
+          round(trend_est, 2),
+          " seals per year; the probability of ",
+          ifelse(
+            p_positive >= 0.50,
+            paste0("population increase was ", p_positive, ". "),
+            paste0("population decline was ", 1 - p_positive, ". ")
+          ),
+          survey_date
+        )
+      ),
+      "The counts for harbor seals in survey units at Iliamna Lake are analyzed in a process separate from the rest of survey area. More information can be found
+      in the resources provided in Data Access section."
+    )
+  )
+
+# Calculate centroids and assign to survey_polygons
+centroids <- sf::st_coordinates(sf::st_centroid(survey_polygons))
+survey_polygons <- survey_polygons %>%
+  mutate(
+    centroid.x = centroids[, 1],
+    centroid.y = centroids[, 2]
   )
 
 # EXPORT survey_polygons

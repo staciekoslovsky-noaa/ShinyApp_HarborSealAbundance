@@ -23,15 +23,12 @@ sf::sf_use_s2(FALSE)
 source("functions.R")
 
 ## Load data -----------------------------------------
-stock_polygons <- sf::st_read("data/survey_stocks.geojson", quiet = TRUE) %>%
-  sf::st_transform(4326)
-haulout <- sf::st_read("data/survey_haulout.geojson", quiet = TRUE) %>%
-  sf::st_transform(4326)
+stock_polygons <- sf::st_read("data/survey_stocks.geojson", quiet = TRUE)
+haulout <- sf::st_read("data/survey_haulout.geojson", quiet = TRUE)
 survey_polygons <- sf::st_read(
   "../not_to_share/4app/survey_polygons.geojson",
   quiet = TRUE
-) %>%
-  sf::st_transform(4326) # this is not in the repository, so the reference will need to be changed
+)
 
 # Load metadata/cubes/trends
 load("data/poly_metadata.rda")
@@ -52,17 +49,7 @@ message("All data loaded into memory")
 ## Prepare geometries -----------------------------------------
 most_recent_year <- max(data_cube$year)
 
-# 2. Shift longitudes cleanly using native sf objects
-survey_polygons <- sf::st_shift_longitude(survey_polygons)
-stock_polygons <- sf::st_shift_longitude(stock_polygons)
-haulout <- sf::st_shift_longitude(haulout)
-
-# 3. Calculate Centroids Safely
-centroids <- sf::st_coordinates(sf::st_centroid(survey_polygons))
-survey_polygons$centroid.x <- centroids[, 1]
-survey_polygons$centroid.y <- centroids[, 2]
-
-# 4. Extract Bounding Box and provide a Fail-Safe for Leaflet Center
+# Extract Bounding Box and provide a Fail-Safe for Leaflet Center
 bbox <- sf::st_bbox(survey_polygons)
 
 if (any(is.na(bbox)) || length(bbox) == 0) {
@@ -74,96 +61,12 @@ if (any(is.na(bbox)) || length(bbox) == 0) {
   mean_y <- as.numeric((bbox["ymax"] + bbox["ymin"]) / 2)
 }
 
-# Create field to store information provided in popup for survey_polygons
-survey_polygons <- survey_polygons %>%
-  mutate(p_positive = as.numeric(ifelse(is.na(p_positive), 0, p_positive))) %>%
-  mutate(
-    popup_text = ifelse(
-      is.na(iliamna), # change to iliamna == 'N' after next running of PrepData4App
-      ifelse(
-        abund_est == 0,
-        paste0(
-          "You have selected survey unit ",
-          polyid,
-          ", found in the ",
-          stockname,
-          " stock. Harbor seals have not been observed in this survey unit. ",
-          survey_date
-        ),
-        paste0(
-          "You have selected survey unit ",
-          polyid,
-          ", found in the ",
-          stockname,
-          " stock. In ",
-          most_recent_year,
-          ", the harbor seal abundance estimate for this survey unit was ",
-          round(abund_est, 2),
-          " with a confidence interval of ",
-          round(abund_b95, 2),
-          "-",
-          round(abund_t95, 2),
-          ". The current 8-year trend in harbor seal abundance was based on abundance estimates from ",
-          most_recent_year - 8,
-          "-",
-          most_recent_year,
-          " and was estimated as ",
-          round(trend_est, 2),
-          " seals per year; the probability of ",
-          ifelse(
-            p_positive >= 0.50,
-            paste0("population increase was ", p_positive, ". "),
-            paste0("population decline was ", 1 - p_positive, ". ")
-          ),
-          survey_date
-        )
-      ),
-      "The counts for harbor seals in survey units at Iliamna Lake are analyzed in a process separate from the rest of survey area. More information can be found
-      in the resources provided in Data Access section."
-    )
-  )
+# Load default abundance and trend datasets for app --------------------------------------
+abundance <- load_rdata("../not_to_share/4app/abundance.rda")
+trend <- load_rdata("../not_to_share/4app/default_trend.rda")
 
-message("survey_polygons dataset created")
 
-# Create default abundance and trend datasets for app --------------------------------------
-abundance <- calculate_abundance(
-  data_cube = data_cube,
-  group_by_var = c('cube', 'year'),
-  subset_type = 'all',
-  poly_metadata = poly_metadata
-)
-
-trend <-
-  (trend_linear_all %>%
-    mutate(identifier = "all") %>%
-    mutate(trend_type = "linear_all")) %>%
-  rbind(
-    trend_linear_stock %>%
-      rename(identifier = stockname) %>%
-      mutate(trend_type = "linear_stock")
-  ) %>%
-  rbind(
-    trend_linear_polyid %>%
-      rename(identifier = polyid) %>%
-      mutate(trend_type = "linear_polyid")
-  ) %>%
-  rbind(
-    trend_prop_all %>%
-      mutate(identifier = "all") %>%
-      mutate(trend_type = "prop_all")
-  ) %>%
-  rbind(
-    trend_prop_stock %>%
-      rename(identifier = stockname) %>%
-      mutate(trend_type = "prop_stock")
-  ) %>%
-  rbind(
-    trend_prop_polyid %>%
-      rename(identifier = polyid) %>%
-      mutate(trend_type = "prop_polyid")
-  )
-
-message("abundance and trend layers are created")
+message("abundance and trend layers are loaded")
 
 ## Prepare information for ShinyApp -----------------------------------------
 
