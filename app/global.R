@@ -321,19 +321,20 @@ get_opacity <- function(x, bins) {
 ## Load data -----------------------------------------
 stock_polygons  <- sf::st_read("Data/survey_stocks.geojson", quiet = TRUE) %>% sf::st_transform(4326)
 haulout         <- sf::st_read("Data/survey_haulout.geojson", quiet = TRUE) %>% sf::st_transform(4326)
-survey_polygons <- sf::st_read("../4app/survey_polygons.geojson", quiet = TRUE) %>% sf::st_transform(4326) # this is not in the repository, so the reference will need to be changed
+# NOTE: keep this user-specific local path as the default for current testing workflow.
+survey_polygons <- sf::st_read("C://smk/HarborSealApp/4app/survey_polygons.geojson", quiet = TRUE) %>% sf::st_transform(4326)
 
 # Load metadata/cubes/trends
 load("Data/poly_metadata.rda")
 load("Data/last_surveyed.rda")
-load("../4app/data_cube.rda")
+load("C://smk/HarborSealApp/4app/data_cube.rda")
 
-trend_linear_all    <- load_rdata("../4app/trend_linear_all.rda")
-trend_linear_stock  <- load_rdata("../4app/trend_linear_stock.rda")
-trend_linear_polyid <- load_rdata("../4app/trend_linear_polyid.rda")
-trend_prop_all      <- load_rdata("../4app/trend_prop_all.rda")
-trend_prop_stock    <- load_rdata("../4app/trend_prop_stock.rda")
-trend_prop_polyid   <- load_rdata("../4app/trend_prop_polyid.rda")
+trend_linear_all    <- load_rdata("C://smk/HarborSealApp/4app/trend_linear_all.rda")
+trend_linear_stock  <- load_rdata("C://smk/HarborSealApp/4app/trend_linear_stock.rda")
+trend_linear_polyid <- load_rdata("C://smk/HarborSealApp/4app/trend_linear_polyid.rda")
+trend_prop_all      <- load_rdata("C://smk/HarborSealApp/4app/trend_prop_all.rda")
+trend_prop_stock    <- load_rdata("C://smk/HarborSealApp/4app/trend_prop_stock.rda")
+trend_prop_polyid   <- load_rdata("C://smk/HarborSealApp/4app/trend_prop_polyid.rda")
 
 message("All data loaded into memory")
 
