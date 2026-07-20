@@ -21,6 +21,20 @@ sf::sf_use_s2(FALSE)
 repo_root <- normalizePath("..", winslash = "/", mustWork = TRUE)
 source(file.path(repo_root, "R", "harbor_seal_shared.R"))
 paths <- harbor_seal_paths(repo_root)
+legacy_app_artifacts_dir <- "C://smk/HarborSealApp/4app"
+if (!nzchar(Sys.getenv("HARBOR_SEAL_APP_ARTIFACTS_DIR")) &&
+    dir.exists(legacy_app_artifacts_dir)) {
+  paths$app_artifacts_dir <- legacy_app_artifacts_dir
+  paths$data_cube <- file.path(legacy_app_artifacts_dir, "data_cube.rda")
+  paths$survey_polygons <- file.path(legacy_app_artifacts_dir, "survey_polygons.geojson")
+  paths$trend_linear_all <- file.path(legacy_app_artifacts_dir, "trend_linear_all.rda")
+  paths$trend_linear_stock <- file.path(legacy_app_artifacts_dir, "trend_linear_stock.rda")
+  paths$trend_linear_polyid <- file.path(legacy_app_artifacts_dir, "trend_linear_polyid.rda")
+  paths$trend_prop_all <- file.path(legacy_app_artifacts_dir, "trend_prop_all.rda")
+  paths$trend_prop_stock <- file.path(legacy_app_artifacts_dir, "trend_prop_stock.rda")
+  paths$trend_prop_polyid <- file.path(legacy_app_artifacts_dir, "trend_prop_polyid.rda")
+  paths$trend_p_positive <- file.path(legacy_app_artifacts_dir, "trend_p_positive.rda")
+}
 assert_app_artifacts_exist(paths)
 
 ## Runtime helpers -----------------------------------------
