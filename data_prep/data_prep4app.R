@@ -6,7 +6,6 @@ source(
 )
 install_pkg("tidyverse")
 install_pkg("RPostgreSQL")
-install_pkg("geojsonio")
 install_pkg("sf")
 install_pkg("rmapshaper")
 
@@ -32,11 +31,10 @@ stock_polygons <- sf::st_read(
   sf::st_shift_longitude() %>%
   ms_simplify(keep = 0.10, keep_shapes = TRUE)
 
-# EXPORT stock_polygons
-geojsonio::geojson_write(
+# EXPORT stock_polygons (CHANGE MAPPING LOCATION ONCE APP IS SHAREABLE)
+saveRDS(
   stock_polygons,
-  geometry = "polygon",
-  file = "survey_stocks.geojson"
+  file = "C:/Users/Stacie.Hardy/Work/SMK/GitHub/ShinyApp_HarborSealAbundance/not_to_share/4app/stock_polygons.rds"
 )
 
 # CREATE haulout ~~~~~~~~~~~~~~~~~~~
@@ -49,15 +47,15 @@ haulout <- sf::st_read(
   sf::st_transform(4326) %>%
   sf::st_shift_longitude()
 
-# EXPORT haulout
-geojsonio::geojson_write(
+
+# EXPORT haulout (CHANGE MAPPING LOCATION ONCE APP IS SHAREABLE)
+saveRDS(
   haulout,
-  geometry = "point",
-  file = "survey_haulout.geojson"
+  file = "C:/Users/Stacie.Hardy/Work/SMK/GitHub/ShinyApp_HarborSealAbundance/not_to_share/4app/survey_haulout.rds"
 )
 
-
-# CREATE poly_metadata and last_surveyed ~~~~~~~~~~~~~~~~~~~
+# Create poly_metadata and last_surveyed ~~~~~~~~~~~~~~~~~~~
+# For use in memory
 tbl_effort_4shiny <- RPostgreSQL::dbGetQuery(
   con,
   "SELECT * FROM surv_pv_cst.tbl_effort_4Shiny"
@@ -69,27 +67,20 @@ tbl_effort_4shiny <- RPostgreSQL::dbGetQuery(
 
 poly_metadata <- tbl_effort_4shiny %>%
   select(polyid, year, surveyed)
-# EXPORT poly_metadata
-save(poly_metadata, file = "poly_metadata.rda")
-
 
 last_surveyed <- tbl_effort_4shiny %>%
   select(polyid, last_surveyed) %>%
   unique()
-# EXPORT last_surveyed
-save(last_surveyed, file = "last_surveyed.rda")
 
 
 # START survey_poly (before joined to abundance data) ~~~~~~~~~~~~~~~~~~~
-#url.poly <- "https://raw.githubusercontent.com/staciekoslovsky-noaa/ShinyApp_HarborSealAbundance/main/Data/survey_polygons.geojson"
-#survey_polygons <- geojsonio::geojson_read(url.poly, what = "sp") %>%
 survey_polygons <- sf::st_read(
   con,
   query = "SELECT * FROM surv_pv_cst.geo_polys",
   geometry_column = "geom"
 ) %>%
   sf::st_as_sf(crs = 4326) %>%
-  ms_simplify(keep = 0.10, keep_shapes = TRUE) %>%
+  rmapshaper::ms_simplify(keep = 0.10, keep_shapes = TRUE) %>%
   select(
     -stockid,
     -trendpoly,
@@ -414,13 +405,11 @@ survey_polygons <- survey_polygons %>%
     centroid.y = centroids[, 2]
   )
 
-# EXPORT survey_polygons
-geojsonio::geojson_write(
+# EXPORT survey_polygons (CHANGE MAPPING LOCATION ONCE APP IS SHAREABLE)
+saveRDS(
   survey_polygons,
-  geometry = "polygon",
-  file = "C:/Users/Stacie.Hardy/Work/SMK/GitHub/ShinyApp_HarborSealAbundance/not_to_share/4app/survey_polygons.geojson"
-) # Update to wd folder once data are shareable
-
+  file = "C:/Users/Stacie.Hardy/Work/SMK/GitHub/ShinyApp_HarborSealAbundance/not_to_share/4app/survey_polygons.rds"
+)
 
 # Clean up workspace
 rm(

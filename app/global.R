@@ -23,18 +23,14 @@ sf::sf_use_s2(FALSE)
 source("functions.R")
 
 ## Load data -----------------------------------------
-stock_polygons <- sf::st_read("data/survey_stocks.geojson", quiet = TRUE)
-haulout <- sf::st_read("data/survey_haulout.geojson", quiet = TRUE)
-survey_polygons <- sf::st_read(
-  "../not_to_share/4app/survey_polygons.geojson",
-  quiet = TRUE
-)
+stock_polygons <- readRDS("data/survey_stocks.rds")
+haulout <- readRDS("data/survey_haulout.rds")
+survey_polygons <- readRDS("../not_to_share/4app/survey_polygons.rds")
 
-# Load metadata/cubes/trends
-load("data/poly_metadata.rda")
-load("data/last_surveyed.rda")
+# Metadata/cubes/trends
 load("../not_to_share/4app/data_cube.rda")
 
+# Trend datasets
 trend_linear_all <- load_rdata("../not_to_share/4app/trend_linear_all.rda")
 trend_linear_stock <- load_rdata("../not_to_share/4app/trend_linear_stock.rda")
 trend_linear_polyid <- load_rdata(
@@ -43,6 +39,10 @@ trend_linear_polyid <- load_rdata(
 trend_prop_all <- load_rdata("../not_to_share/4app/trend_prop_all.rda")
 trend_prop_stock <- load_rdata("../not_to_share/4app/trend_prop_stock.rda")
 trend_prop_polyid <- load_rdata("../not_to_share/4app/trend_prop_polyid.rda")
+
+# Default abundance and trend datasets for app
+abundance <- load_rdata("../not_to_share/4app/default_abundance.rda")
+trend <- load_rdata("../not_to_share/4app/default_trend.rda")
 
 message("All data loaded into memory")
 
@@ -60,13 +60,6 @@ if (any(is.na(bbox)) || length(bbox) == 0) {
   mean_x <- as.numeric((bbox["xmax"] + bbox["xmin"]) / 2)
   mean_y <- as.numeric((bbox["ymax"] + bbox["ymin"]) / 2)
 }
-
-# Load default abundance and trend datasets for app --------------------------------------
-abundance <- load_rdata("../not_to_share/4app/abundance.rda")
-trend <- load_rdata("../not_to_share/4app/default_trend.rda")
-
-
-message("abundance and trend layers are loaded")
 
 ## Prepare information for ShinyApp -----------------------------------------
 
