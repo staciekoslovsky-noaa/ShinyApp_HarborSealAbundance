@@ -8,6 +8,7 @@ install_pkg("tidyverse")
 install_pkg("RPostgreSQL")
 install_pkg("geojsonio")
 install_pkg("sf")
+install_pkg("rmapshaper")
 
 ## Process data ---------------------------------------------
 setwd("C:/Users/Stacie.Hardy/Work/SMK/GitHub/ShinyApp_HarborSealAbundance/data")
@@ -28,7 +29,8 @@ stock_polygons <- sf::st_read(
   geometry_column = "geom"
 ) %>%
   sf::st_transform(4326) %>%
-  sf::st_shift_longitude()
+  sf::st_shift_longitude() %>%
+  ms_simplify(keep = 0.10, keep_shapes = TRUE)
 
 # EXPORT stock_polygons
 geojsonio::geojson_write(
@@ -87,6 +89,7 @@ survey_polygons <- sf::st_read(
   geometry_column = "geom"
 ) %>%
   sf::st_as_sf(crs = 4326) %>%
+  ms_simplify(keep = 0.10, keep_shapes = TRUE) %>%
   select(
     -stockid,
     -trendpoly,
@@ -97,7 +100,7 @@ survey_polygons <- sf::st_read(
   rename(polygon_id = id) %>%
   left_join(last_surveyed, by = "polyid")
 
-# Create Stocknames for data processing steps: create table for joining to abundance data cube based on survey polygon data
+# Create stocknames for data processing steps: create table for joining to abundance data cube based on survey polygon data
 stock_names <- survey_polygons %>%
   select(polyid, stockname) %>%
   st_drop_geometry()
