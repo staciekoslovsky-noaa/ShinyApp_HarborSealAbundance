@@ -26,7 +26,7 @@ ui <- shinydashboard::dashboardPage(
         href = "https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/all.min.css"
       )
     ),
-  
+
     # Various tabs inclued in sidebar menu
     sidebarMenu(
       shinydashboard::menuItem(
@@ -55,7 +55,6 @@ ui <- shinydashboard::dashboardPage(
   dashboardBody(
     useShinyjs(),
     shinydashboard::tabItems(
-      
       # Welcome tab
       tabItem(
         tabName = 'welcome',
@@ -88,7 +87,12 @@ ui <- shinydashboard::dashboardPage(
               selectizeInput(
                 "filter",
                 "Filter Data By",
-                choices = c("Stock", "Survey Unit", "Custom Polygon", "Custom Circle", "Glacial Sites"),
+                choices = c(
+                  "Stock",
+                  "Survey Unit",
+                  "Custom Shape",
+                  "Glacial Sites"
+                ),
                 selected = "Stock"
               ),
               selectizeInput(

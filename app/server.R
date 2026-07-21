@@ -49,7 +49,6 @@ server <- function(input, output, session) {
         position = "bottomright",
         options = scaleBarOptions(maxWidth = 250)
       ) %>%
-      # addPolygons(data = stock_polygons) %>%
       addPolygons(
         data = stock_polygons,
         fillOpacity = 0.2,
@@ -120,7 +119,10 @@ server <- function(input, output, session) {
   )
 
   # Reactive dataset and title for abundance plot
-  plotted.abundance <- shiny::reactiveValues(values = abundance)
+  plotted.abundance <- shiny::reactiveValues(
+    values = abundance %>%
+      filter(abundance_type == "all")
+  )
   title.abundance <- shiny::reactiveVal(value = "in All Stocks")
 
   # Reactive dataset and title for trend plot
@@ -149,13 +151,8 @@ server <- function(input, output, session) {
       if (input$stock.select != "All") {
         stock_filter <- input$stock.select
 
-        plotted.abundance$values <- calculate_abundance(
-          data_cube = data_cube,
-          group_by_var = c('cube', 'year'),
-          subset_type = 'stock',
-          poly_metadata = poly_metadata,
-          filter = stock_filter
-        )
+        plotted.abundance$values <- abundance %>%
+          filter(abundance_type == "stock" & identifier == stock_filter)
         title.abundance(paste("in the", input$stock.select, "Stock"))
 
         plotted.trend$values <- trend %>%
@@ -172,7 +169,8 @@ server <- function(input, output, session) {
         currently_plotted_ids <- survey_polygons %>%
           filter(stockname == stock_filter)
       } else {
-        plotted.abundance$values <- abundance
+        plotted.abundance$values <- abundance %>%
+          filter(abundance_type == "all")
         title.abundance("in All Stocks")
 
         plotted.trend$values <- trend %>%
@@ -186,14 +184,13 @@ server <- function(input, output, session) {
         title.trend("in All Stocks")
       }
       zoom.to.stock(TRUE)
-    } else if (input$filter == "Custom Polygon") {
-      # Process data if "polygon" selected ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-      # If there is no drawn shape, revert to default data (otherwise there is a fatal error and the R session is aborted)
-      if (
-        is.null(input$map1_draw_new_feature) ||
-          (input$map1_draw_new_feature$properties$feature_type == "circle")
-      ) {
-        plotted.abundance$values <- abundance
+    } else if (input$filter == "Custom Shape") {
+      # Process data if a user-drawn shape is selected ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+      drawn <- input$map1_draw_new_feature
+      # If there is no drawn feature, revert to default data
+      if (is.null(drawn)) {
+        plotted.abundance$values <- abundance %>%
+          filter(abundance_type == "all")
         title.abundance("in All Stocks")
 
         plotted.trend$values <- trend %>%
@@ -206,121 +203,92 @@ server <- function(input, output, session) {
           )
         title.trend("in All Stocks")
       } else {
-        # Select based on drawn polygon
-        drawn <- input$map1_draw_new_feature
-        polygon_coordinates <- do.call(
-          rbind,
-          lapply(drawn$geometry$coordinates[[1]], function(x) {
-            c(x[[1]][1], x[[2]][1])
-          })
-        )
-        drawn_polygon <- data.frame(
-          lat = polygon_coordinates[, 2],
-          long = polygon_coordinates[, 1]
-        ) %>%
-          st_as_sf(coords = c("long", "lat"), crs = 4326) %>%
-          summarise(geometry = st_combine(geometry)) %>%
-          st_cast("POLYGON")
+        # Build the drawn shape depending on feature type
+        if (drawn$properties$feature_type == "circle") {
+          drawn_shape <- data.frame(
+            lat = drawn$geometry$coordinates[[2]],
+            long = drawn$geometry$coordinates[[1]]
+          ) %>%
+            sf::st_as_sf(coords = c("long", "lat"), crs = 4326) %>%
+            sf::st_transform(crs = 32606) %>%
+            sf::st_buffer(dist = drawn$properties$radius) %>%
+            sf::st_transform(4326)
+
+          drawn_shape$geometry <- (sf::st_geometry(drawn_shape) + c(360, 90)) %%
+            c(360) -
+            c(0, 90)
+        } else {
+          polygon_coordinates <- do.call(
+            rbind,
+            lapply(drawn$geometry$coordinates[[1]], function(x) {
+              c(x[[1]][1], x[[2]][1])
+            })
+          )
+
+          drawn_shape <- data.frame(
+            lat = polygon_coordinates[, 2],
+            long = polygon_coordinates[, 1]
+          ) %>%
+            sf::st_as_sf(coords = c("long", "lat"), crs = 4326) %>%
+            summarise(geometry = st_combine(geometry)) %>%
+            st_cast("POLYGON")
+        }
+
         found_in_bounds <- st_join(
-          sf::st_set_crs(drawn_polygon, 4326),
+          sf::st_set_crs(drawn_shape, 4326),
           sf::st_set_crs(survey_polygons, 4326)
         )
 
-        poly_filter <- found_in_bounds$polyid
+        shape_filter <- found_in_bounds$polyid
 
-        # Subset data by polyids within polygon
-        plotted.abundance$values <- calculate_abundance(
-          data_cube = data_cube,
-          group_by_var = c('cube', 'year'),
-          subset_type = 'poly_in_list',
-          poly_metadata = poly_metadata,
-          filter = poly_filter
-        ) %>%
-          left_join(trend_linear_stock, by = "year")
-        title.abundance("in the Selected Survey Units")
+        selected_cube <- data_cube_ds %>%
+          dplyr::filter(polyid %in% shape_filter) %>%
+          dplyr::select(cube, year, polyid, stockname, abund) %>%
+          collect()
 
-        plotted.trend$values <- trend %>%
-          filter(
-            if (input$trend.type == "Linear") {
-              trend_type == "linear_all"
-            } else {
-              trend_type == "prop_all"
-            }
+        if (nrow(selected_cube) == 0) {
+          plotted.abundance$values <- abundance %>%
+            filter(abundance_type == "all")
+          title.abundance("in All Stocks")
+
+          plotted.trend$values <- trend %>%
+            filter(
+              if (input$trend.type == "Linear") {
+                trend_type == "linear_all"
+              } else {
+                trend_type == "prop_all"
+              }
+            )
+          title.trend("in All Stocks")
+
+          currently_plotted_ids <- NULL
+        } else {
+          year_first <- min(selected_cube$year)
+          year_last <- max(selected_cube$year)
+
+          plotted.abundance$values <- calculate_abundance(
+            data_cube = selected_cube,
+            group_by = "all",
+            poly_metadata = poly_metadata
           )
-        title.trend(
-          "in All Stocks (trend cannot be subset to the selected survey units)"
-        )
+          title.abundance("in the Selected Survey Units")
 
-        currently_plotted_ids <- survey_polygons %>%
-          filter(polyid %in% poly_filter)
-      }
-      zoom.to.stock(TRUE)
-    } else if (input$filter == "Custom Circle") {
-      # Process data if "circle" selected ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-      # If there is no drawn circle, revert to default data (otherwise there is a fatal error and the r session is aborted)
-      if (
-        is.null(input$map1_draw_new_feature) ||
-          (input$map1_draw_new_feature$properties$feature_type != "circle")
-      ) {
-        plotted.abundance$values <- abundance
-        title.abundance("in All Stocks")
-
-        plotted.trend$values <- trend %>%
-          filter(
-            if (input$trend.type == "Linear") {
-              trend_type == "linear_all"
-            } else {
-              trend_type == "prop_all"
-            }
+          plotted.trend$values <- calculate_trend(
+            data_cube = selected_cube,
+            trend_type = ifelse(
+              input$trend.type == "Linear",
+              "linear",
+              "proportional"
+            ),
+            group_by = "all",
+            year_first = year_first,
+            year_last = year_last
           )
-        title.trend("in All Stocks")
-      } else {
-        # Select based on drawn circle
-        drawn <- input$map1_draw_new_feature
+          title.trend("in the Selected Survey Units")
 
-        drawn_circle <- data.frame(
-          lat = drawn$geometry$coordinates[[2]],
-          long = drawn$geometry$coordinates[[1]]
-        ) %>%
-          sf::st_as_sf(coords = c("long", "lat"), crs = 4326) %>%
-          sf::st_transform(crs = 32606) %>%
-          sf::st_buffer(dist = drawn$properties$radius) %>%
-          sf::st_transform(4326)
-        drawn_circle$geometry <- (sf::st_geometry(drawn_circle) + c(360, 90)) %%
-          c(360) -
-          c(0, 90)
-
-        found_in_bounds <- st_join(
-          sf::st_set_crs(drawn_circle, 4326),
-          sf::st_set_crs(survey_polygons, 4326)
-        )
-
-        circle_filter <- found_in_bounds$polyid
-
-        # Calculate custom abundance estimates for app
-        plotted.abundance$values <- calculate_abundance(
-          data_cube = data_cube,
-          group_by_var = c('cube', 'year'),
-          subset_type = 'poly_in_list',
-          poly_metadata = poly_metadata,
-          filter = circle_filter
-        )
-        title.abundance("Within the Given Radius")
-
-        plotted.trend$values <- trend %>%
-          filter(
-            if (input$trend.type == "Linear") {
-              trend_type == "linear_all"
-            } else {
-              trend_type == "prop_all"
-            }
-          )
-        title.trend(
-          "in All Stocks  (trend cannot be subset to the selected survey units)"
-        )
-
-        currently_plotted_ids <- survey_polygons %>%
-          filter(polyid %in% circle_filter)
+          currently_plotted_ids <- survey_polygons %>%
+            filter(polyid %in% shape_filter)
+        }
       }
       zoom.to.stock(TRUE)
     } else if (input$filter == "Glacial Sites") {
@@ -333,27 +301,19 @@ server <- function(input, output, session) {
       poly_filter <- poly_filter$polyid
 
       # Subset data by polyids within polygon
-      plotted.abundance$values <- calculate_abundance(
-        data_cube = data_cube,
-        group_by_var = c('cube', 'year'),
-        subset_type = 'poly_in_list',
-        poly_metadata = poly_metadata,
-        filter = poly_filter
-      ) %>%
-        left_join(trend_linear_stock, by = "year")
+      plotted.abundance$values <- abundance %>%
+        filter(abundance_type == "glacial")
       title.abundance("in Survey Units in Glacial Habitat")
 
       plotted.trend$values <- trend %>%
         filter(
           if (input$trend.type == "Linear") {
-            trend_type == "linear_all"
+            trend_type == "linear_glacial"
           } else {
-            trend_type == "prop_all"
+            trend_type == "prop_glacial"
           }
         )
-      title.trend(
-        "in All Stocks (trend cannot be subset to the selected survey units)"
-      )
+      title.trend("in Survey Units in Glacial Habitat")
 
       currently_plotted_ids <- survey_polygons %>%
         filter(polyid %in% poly_filter)
@@ -362,7 +322,8 @@ server <- function(input, output, session) {
     } else if (input$filter == "Survey Unit") {
       # Process data if "survey unit" selected ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
       if (is.null(input$map1_shape_click$id)) {
-        plotted.abundance$values <- abundance
+        plotted.abundance$values <- abundance %>%
+          filter(abundance_type == "all")
         title.abundance("in All Stocks")
 
         plotted.trend$values <- trend %>%
@@ -378,13 +339,9 @@ server <- function(input, output, session) {
         singlePoly_filter <- input$map1_shape_click$id
 
         # Calculate custom abundance estimates for app
-        plotted.abundance$values <- calculate_abundance(
-          data_cube = data_cube,
-          group_by_var = c('cube', 'year'),
-          subset_type = 'poly_in_list',
-          poly_metadata = poly_metadata,
-          filter = singlePoly_filter
-        )
+        plotted.abundance$values <- abundance %>%
+          filter(abundance_type == "polyid") %>%
+          filter(identifier == singlePoly_filter)
         title.abundance(paste("in Survey Unit:", singlePoly_filter))
 
         plotted.trend$values <- trend %>%
@@ -438,7 +395,7 @@ server <- function(input, output, session) {
   })
 
   shiny::observeEvent(input$default, {
-    plotted.abundance$values <- abundance
+    plotted.abundance$values <- abundance %>% filter(abundance_type == "all")
     title.abundance("in All Stocks")
 
     plotted.trend$values <- trend %>%
@@ -507,7 +464,7 @@ server <- function(input, output, session) {
       hc_add_series(
         data = abund_subset,
         type = "column",
-        hcaes(x = year, y = effort),           
+        hcaes(x = year, y = effort),
         color = "#855278",
         name = "% of Harbor Seals Surveyed",
         opacity = 0.5,

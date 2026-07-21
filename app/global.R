@@ -16,38 +16,61 @@ library(scales)
 library(geojsonio)
 library(sf)
 library(roll)
+library(arrow)
 
 sf::sf_use_s2(FALSE)
 
 ## Load functions -----------------------------------------
 source("functions.R")
 
+# Function to assign opacity values to polygons based on abundance
+get_opacity <- function(x, bins) {
+  opacity_vector <- c()
+
+  for (element in x) {
+    if (element < bins[1]) {
+      opacity_vector <- opacity_vector %>% append(0.01)
+    } else if (element < bins[2]) {
+      opacity_vector <- opacity_vector %>% append(0.3)
+    } else if (element < bins[3]) {
+      opacity_vector <- opacity_vector %>% append(0.4)
+    } else if (element < bins[4]) {
+      opacity_vector <- opacity_vector %>% append(0.5)
+    } else if (element < bins[5]) {
+      opacity_vector <- opacity_vector %>% append(0.6)
+    } else if (element < bins[6]) {
+      opacity_vector <- opacity_vector %>% append(0.7)
+    } else if (element < bins[7]) {
+      opacity_vector <- opacity_vector %>% append(0.8)
+    } else {
+      opacity_vector <- opacity_vector %>% append(0.9)
+    }
+  }
+  return(opacity_vector)
+}
+
+
 ## Load data -----------------------------------------
-stock_polygons <- readRDS("data/survey_stocks.rds")
+stock_polygons <- readRDS("data/stock_polygons.rds")
 haulout <- readRDS("data/survey_haulout.rds")
 survey_polygons <- readRDS("../not_to_share/4app/survey_polygons.rds")
-
-# Metadata/cubes/trends
-load("../not_to_share/4app/data_cube.rda")
-
-# Trend datasets
-trend_linear_all <- load_rdata("../not_to_share/4app/trend_linear_all.rda")
-trend_linear_stock <- load_rdata("../not_to_share/4app/trend_linear_stock.rda")
-trend_linear_polyid <- load_rdata(
-  "../not_to_share/4app/trend_linear_polyid.rda"
+load(
+  "C:/Users/Stacie.Hardy/Work/SMK/GitHub/ShinyApp_HarborSealAbundance/not_to_share/4app/poly_metadata.rda"
 )
-trend_prop_all <- load_rdata("../not_to_share/4app/trend_prop_all.rda")
-trend_prop_stock <- load_rdata("../not_to_share/4app/trend_prop_stock.rda")
-trend_prop_polyid <- load_rdata("../not_to_share/4app/trend_prop_polyid.rda")
-
-# Default abundance and trend datasets for app
-abundance <- load_rdata("../not_to_share/4app/default_abundance.rda")
-trend <- load_rdata("../not_to_share/4app/default_trend.rda")
+load(
+  "C:/Users/Stacie.Hardy/Work/SMK/GitHub/ShinyApp_HarborSealAbundance/not_to_share/4app/abundance.rda"
+)
+load(
+  "C:/Users/Stacie.Hardy/Work/SMK/GitHub/ShinyApp_HarborSealAbundance/not_to_share/4app/trend.rda"
+)
+data_cube_ds <- open_dataset(
+  "C:/Users/Stacie.Hardy/Work/SMK/GitHub/ShinyApp_HarborSealAbundance/not_to_share/4app/data_cube_dataset"
+)
 
 message("All data loaded into memory")
 
-## Prepare geometries -----------------------------------------
-most_recent_year <- max(data_cube$year)
+## Prepare data for app -----------------------------------------
+most_recent_year <- max(abundance$year)
 
 # Extract Bounding Box and provide a Fail-Safe for Leaflet Center
 bbox <- sf::st_bbox(survey_polygons)
