@@ -7,6 +7,7 @@ source(
 library("tidyverse")
 library("RPostgreSQL")
 library("sf")
+library("arrow")
 
 ## Process data ---------------------------------------------
 setwd(
@@ -29,9 +30,10 @@ stock_polygons <- sf::st_read(
   query = "SELECT * FROM stock.geo_dist_pv",
   geometry_column = "geom"
 ) %>%
-  sf::st_transform(4326) %>%
-  sf::st_shift_longitude() %>%
-  sf::st_simplify()
+  sf::st_transform(3338) %>%
+  sf::st_simplify() %>%
+  sf::st_transform(crs = 4326) %>%
+  sf::st_shift_longitude()
 
 # EXPORT stock_polygons
 saveRDS(
@@ -68,6 +70,11 @@ tbl_effort_4shiny <- RPostgreSQL::dbGetQuery(
 
 poly_metadata <- tbl_effort_4shiny %>%
   select(polyid, year, surveyed)
+# EXPORT poly_metadata
+save(
+  poly_metadata,
+  file = "C:/Users/Stacie.Hardy/Work/SMK/GitHub/ShinyApp_HarborSealAbundance/not_to_share/4app/poly_metadata.rda"
+) # Update to wd folder once data are shareable
 
 last_surveyed <- tbl_effort_4shiny %>%
   select(polyid, last_surveyed) %>%
@@ -82,7 +89,8 @@ survey_polygons <- sf::st_read(
 ) %>%
   sf::st_transform(3338) %>%
   sf::st_simplify() %>%
-  sf::st_as_sf(crs = 4326) %>%
+  sf::st_transform(crs = 4326) %>%
+  sf::st_shift_longitude() %>%
   select(
     -stockid,
     -trendpoly,
@@ -98,6 +106,12 @@ stock_names <- survey_polygons %>%
   select(polyid, stockname) %>%
   st_drop_geometry()
 
+# Create glacial names list
+glacial_polys <- survey_polygons %>%
+  filter(!is.na(glacier_name)) %>%
+  select(polyid) %>%
+  st_drop_geometry()
+
 stock_ids <- unique(stock_names$stockname) # for trend calculations
 
 RPostgreSQL::dbDisconnect(con)
@@ -105,8 +119,10 @@ rm(con)
 
 
 # CREATE data_cube ~~~~~~~~~~~~~~~~~~~
-url.data_cube <- "C:/Users/Stacie.Hardy/Work/SMK/GitHub/ShinyApp_HarborSealAbundance/not_to_share/akpv_datacube.rda"
-data_cube <- load_rdata(url.data_cube) %>%
+load(
+  "C:/Users/Stacie.Hardy/Work/SMK/GitHub/ShinyApp_HarborSealAbundance/not_to_share/akpv_datacube.rda"
+)
+data_cube <- akpv_datacube %>%
   data.frame() %>%
   rownames_to_column() %>%
   rename(polyid = rowname) %>%
@@ -121,28 +137,28 @@ data_cube <- load_rdata(url.data_cube) %>%
     year = as.numeric(substring(year, 2, 5))
   ) %>%
   left_join(stock_names, by = "polyid")
+rm(akpv_datacube)
 
-# EXPORT data_cube
-save(
+# EXPORT data_cube (to parquet format for access from the application)
+write_dataset(
   data_cube,
-  file = "C:/Users/Stacie.Hardy/Work/SMK/GitHub/ShinyApp_HarborSealAbundance/not_to_share/4app/data_cube.rda"
+  path = "C:/Users/Stacie.Hardy/Work/SMK/GitHub/ShinyApp_HarborSealAbundance/not_to_share/4app/data_cube_dataset",
+  format = "parquet",
+  partitioning = "stockname"
 ) # Update to wd folder once data are shareable
 
 
-# CREATE trend tables ~~~~~~~~~~~~~~~~~~~
-data_cube_4trend <- load_rdata(url.data_cube)
-rm(url.data_cube)
-data_cube_polys <- rownames(data_cube_4trend[[1]])
+# Prepare trend data ~~~~~~~~~~~~~~~~~~~
+data_cube_polys <- unique(data_cube$polyid)
 year_first <- min(data_cube$year)
 year_last <- max(data_cube$year)
-
-# CREATE trend for p(increase|decrease)
 n_years <- year_last - year_first + 1
 n_sims <- length(data_cube_4trend)
 pop <- matrix(NA, nrow = n_sims, ncol = n_years)
 maxi <- n_years
 trend_length <- 8
 
+# CREATE trend for p(increase|decrease)
 p_positive <- numeric(length(data_cube_polys))
 
 for (p in seq_along(data_cube_polys)) {
@@ -171,151 +187,171 @@ trend_p_positive <- data.frame(
   p_positive = p_positive
 )
 
-rm(data_cube_polys, maxi, n_years, pop, trend_length, p, trend_matrix)
+rm(maxi, n_years, pop, trend_length, p, trend_matrix)
 
-
-# EXPORT trend_linear_all
+# CREATE trend datasets
+# trend_linear_all
 trend_linear_all <- calculate_trend(
-  data_cube_4trend,
-  trend_type = "linear",
-  group_by = "all",
-  group_list = "NA",
-  year_first,
-  year_last
-)
-save(
-  trend_linear_all,
-  file = "C:/Users/Stacie.Hardy/Work/SMK/GitHub/ShinyApp_HarborSealAbundance/not_to_share/4app/trend_linear_all.rda"
-) # Update to wd folder once data are shareable
-
-# EXPORT trend_linear_stock
-trend_linear_stock <- calculate_trend(
-  data_cube_4trend,
-  trend_type = "linear",
-  group_by = "stock",
-  group_list = stock_ids,
-  year_first,
-  year_last
-)
-save(
-  trend_linear_stock,
-  file = "C:/Users/Stacie.Hardy/Work/SMK/GitHub/ShinyApp_HarborSealAbundance/not_to_share/4app/trend_linear_stock.rda"
-) # Update to wd folder once data are shareable
-
-# EXPORT trend_linear_polyid (takes several hours to run)
-trend_linear_polyid <- calculate_trend(
-  data_cube_4trend,
-  trend_type = "linear",
-  group_by = "polyid",
-  group_list = data_cube_polys,
-  year_first,
-  year_last
-)
-save(
-  trend_linear_polyid,
-  file = "C:/Users/Stacie.Hardy/Work/SMK/GitHub/ShinyApp_HarborSealAbundance/not_to_share/4app/trend_linear_polyid.rda"
-) # Update to wd folder once data are shareable
-
-# EXPORT trend_prop_all
-trend_prop_all <- calculate_trend(
-  data_cube_4trend,
-  trend_type = "proportional",
-  group_by = "all",
-  group_list = "NA",
-  year_first,
-  year_last
-)
-save(
-  trend_prop_all,
-  file = "C:/Users/Stacie.Hardy/Work/SMK/GitHub/ShinyApp_HarborSealAbundance/not_to_share/4app/trend_prop_all.rda"
-) # Update to wd folder once data are shareable
-
-# EXPORT trend_prop_stock
-trend_prop_stock <- calculate_trend(
-  data_cube_4trend,
-  trend_type = "proportional",
-  group_by = "stock",
-  group_list = stock_ids,
-  year_first,
-  year_last
-)
-save(
-  trend_prop_stock,
-  file = "C:/Users/Stacie.Hardy/Work/SMK/GitHub/ShinyApp_HarborSealAbundance/not_to_share/4app/trend_prop_stock.rda"
-) # Update to wd folder once data are shareable
-
-# EXPORT trend_prop_polyid (takes several hours to run) ## Rerun after feedback from Brett!
-trend_prop_polyid <- calculate_trend(
-  data_cube_4trend,
-  trend_type = "proportional",
-  group_by = "polyid",
-  group_list = data_cube_polys,
-  year_first,
-  year_last
-)
-save(
-  trend_prop_polyid,
-  file = "C:/Users/Stacie.Hardy/Work/SMK/GitHub/ShinyApp_HarborSealAbundance/not_to_share/4app/trend_prop_polyid.rda"
-) # Update to wd folder once data are shareable
-
-# CREATE default abundance dataset ~~~~~~~~~~~~~~~~~~~
-abundance <- calculate_abundance(
   data_cube = data_cube,
-  group_by_var = c('cube', 'year'),
-  subset_type = 'all',
+  trend_type = "linear",
+  group_by = "all",
+  year_first = year_first,
+  year_last = year_last
+)
+
+# trend_linear_stock
+trend_linear_stock <- calculate_trend(
+  data_cube = data_cube,
+  trend_type = "linear",
+  group_by = "stock",
+  group_list = sort(unique(data_cube$stockname)),
+  year_first = year_first,
+  year_last = year_last
+)
+
+# trend_linear_polyid
+trend_linear_polyid <- calculate_trend(
+  data_cube = data_cube,
+  trend_type = "linear",
+  group_by = "polyid",
+  group_list = sort(unique(data_cube$polyid)),
+  year_first = year_first,
+  year_last = year_last
+)
+
+# trend_linear_glacial
+trend_linear_glacial <- calculate_trend(
+  data_cube = data_cube %>% filter(polyid %in% glacial_polys$polyid),
+  trend_type = "linear",
+  group_by = "all",
+  year_first = year_first,
+  year_last = year_last
+)
+
+# trend_prop_all
+trend_prop_all <- calculate_trend(
+  data_cube = data_cube,
+  trend_type = "proportional",
+  group_by = "all",
+  year_first = year_first,
+  year_last = year_last
+)
+
+# trend_prop_stock
+trend_prop_stock <- calculate_trend(
+  data_cube = data_cube,
+  trend_type = "proportional",
+  group_by = "stock",
+  group_list = sort(unique(data_cube$stockname)),
+  year_first = year_first,
+  year_last = year_last
+)
+
+# trend_prop_polyid
+trend_prop_polyid <- calculate_trend(
+  data_cube = data_cube,
+  trend_type = "proportional",
+  group_by = "polyid",
+  group_list = sort(unique(data_cube$polyid)),
+  year_first = year_first,
+  year_last = year_last
+)
+
+# trend_prop_glacial
+trend_prop_glacial <- calculate_trend(
+  data_cube = data_cube %>% filter(polyid %in% glacial_polys$polyid),
+  trend_type = "proportional",
+  group_by = "all",
+  year_first = year_first,
+  year_last = year_last
+)
+
+# EXPORT trend dataset
+trend <- rbind(
+  trend_linear_all %>%
+    mutate(identifier = "all") %>%
+    mutate(trend_type = "linear_all"),
+  trend_linear_stock %>%
+    rename(identifier = stockname) %>%
+    mutate(trend_type = "linear_stock"),
+  trend_linear_polyid %>%
+    rename(identifier = polyid) %>%
+    mutate(trend_type = "linear_polyid"),
+  trend_linear_glacial %>%
+    rename(identifier = "glacial") %>%
+    mutate(trend_type = "linear_glacial"),
+  trend_prop_all %>%
+    mutate(identifier = "all") %>%
+    mutate(trend_type = "prop_all"),
+  trend_prop_stock %>%
+    rename(identifier = stockname) %>%
+    mutate(trend_type = "prop_stock"),
+  trend_prop_polyid %>%
+    rename(identifier = polyid) %>%
+    mutate(trend_type = "prop_polyid"),
+  trend_prop_glacial %>%
+    rename(identifier = "glacial") %>%
+    mutate(trend_type = "prop_glacial")
+)
+save(
+  trend,
+  file = "C:/Users/Stacie.Hardy/Work/SMK/GitHub/ShinyApp_HarborSealAbundance/not_to_share/4app/trend.rda"
+) # Update to wd folder once data are shareable
+
+
+# CREATE abundance datasets ~~~~~~~~~~~~~~~~~~~
+abundance_all <- calculate_abundance(
+  data_cube = data_cube,
+  group_by = "all",
   poly_metadata = poly_metadata
+)
+
+abundance_stock <- calculate_abundance(
+  data_cube = data_cube,
+  group_by = "stock",
+  group_list = sort(unique(data_cube$stockname)),
+  poly_metadata = poly_metadata
+)
+
+abundance_polyid <- calculate_abundance(
+  data_cube = data_cube,
+  group_by = "polyid",
+  group_list = sort(unique(data_cube$polyid)),
+  poly_metadata = poly_metadata
+)
+
+abundance_glacial <- calculate_abundance(
+  data_cube = data_cube %>% filter(polyid %in% glacial_polys$polyid),
+  group_by = "all",
+  poly_metadata = poly_metadata
+)
+
+# EXPORT abundance dataset
+abundance <- rbind(
+  abundance_all %>%
+    mutate(abundance_type = "all") %>%
+    mutate(identifier = "all"),
+  abundance_stock %>%
+    mutate(abundance_type = "stock") %>%
+    rename(identifier = stockname),
+  abundance_polyid %>%
+    mutate(abundance_type = "polyid") %>%
+    rename(identifier = polyid),
+  abundance_glacial %>%
+    mutate(abundance_type = "glacial") %>%
+    rename(identifier = "glacial")
 )
 save(
   abundance,
-  file = "C:/Users/Stacie.Hardy/Work/SMK/GitHub/ShinyApp_HarborSealAbundance/not_to_share/4app/default_abundance.rda"
-) # Update to wd folder once data are shareable
-
-
-# CREATE default trend dataset ~~~~~~~~~~~~~~~~~~~
-trend <-
-  (trend_linear_all %>%
-    mutate(identifier = "all") %>%
-    mutate(trend_type = "linear_all")) %>%
-  rbind(
-    trend_linear_stock %>%
-      rename(identifier = stockname) %>%
-      mutate(trend_type = "linear_stock")
-  ) %>%
-  rbind(
-    trend_linear_polyid %>%
-      rename(identifier = polyid) %>%
-      mutate(trend_type = "linear_polyid")
-  ) %>%
-  rbind(
-    trend_prop_all %>%
-      mutate(identifier = "all") %>%
-      mutate(trend_type = "prop_all")
-  ) %>%
-  rbind(
-    trend_prop_stock %>%
-      rename(identifier = stockname) %>%
-      mutate(trend_type = "prop_stock")
-  ) %>%
-  rbind(
-    trend_prop_polyid %>%
-      rename(identifier = polyid) %>%
-      mutate(trend_type = "prop_polyid")
-  )
-save(
-  trend,
-  file = "C:/Users/Stacie.Hardy/Work/SMK/GitHub/ShinyApp_HarborSealAbundance/not_to_share/4app/default_trend.rda"
+  file = "C:/Users/Stacie.Hardy/Work/SMK/GitHub/ShinyApp_HarborSealAbundance/not_to_share/4app/abundance.rda"
 ) # Update to wd folder once data are shareable
 
 
 # CREATE survey_polygons (with most recent abundance + trend) ~~~~~~~~~~~~~~~~~~~
 
 # Create dataset of abundance from most-recent year
-abundance_most_recent <- calculate_abundance(
-  data_cube = data_cube,
-  group_by_var = c('polyid', 'cube', 'year'),
-  subset_type = 'most_recent',
-  most_recent_year = year_last
-) %>%
+abundance_most_recent <- abundance_polyid %>%
+  filter(year == year_last) %>%
   left_join(poly_metadata %>% filter(year == year_last), by = "polyid")
 
 # Join the polygons data with the most recent abundance estimates
@@ -353,12 +389,10 @@ survey_polygons <- survey_polygons %>%
     p_positive,
     geom
   ) %>%
-  sf::st_transform(4326) %>%
-  sf::st_shift_longitude() %>%
   mutate(p_positive = as.numeric(ifelse(is.na(p_positive), 0, p_positive))) %>%
   mutate(
     popup_text = ifelse(
-      is.na(iliamna), # change to iliamna == 'N' after next running of PrepData4App
+      iliamna == 'N',
       ifelse(
         abund_est == 0,
         paste0(
@@ -419,7 +453,17 @@ saveRDS(
 # Clean up workspace
 rm(
   abundance_most_recent,
-  data_cube_4trend,
+  abundance_all,
+  abundance_polyid,
+  abundance_stock,
+  trend_linear_all,
+  trend_linear_stock,
+  trend_linear_polyid,
+  trend_prop_all,
+  trend_prop_stock,
+  trend_prop_polyid,
+  trend_p_positive,
+  centroids,
   stock_names,
   tbl_effort_4shiny,
   trend,
@@ -432,6 +476,8 @@ rm(
   i,
   maxi,
   n_years,
+  n_sims,
+  p_positive,
   stock_ids,
   trend_length,
   year_first,
