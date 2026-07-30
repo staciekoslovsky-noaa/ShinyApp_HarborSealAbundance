@@ -2,7 +2,7 @@
 
 ## Get functions -----------------------------------------
 source(
-  "C:\\Users\\Stacie.Hardy\\Work\\SMK\\GitHub\\ShinyApp_HarborSealAbundance\\app\\functions.R"
+  "C:\\Users\\Stacie.Hardy\\Work\\SMK\\GitHub\\shiny_app_pv_abundance\\app\\functions.R"
 )
 library("tidyverse")
 library("RPostgreSQL")
@@ -11,7 +11,7 @@ library("arrow")
 
 ## Process data ---------------------------------------------
 setwd(
-  "C:/Users/Stacie.Hardy/Work/SMK/GitHub/ShinyApp_HarborSealAbundance/app/data"
+  "C:/Users/Stacie.Hardy/Work/SMK/GitHub/shiny_app_pv_abundance/app/data"
 )
 sf::sf_use_s2(FALSE)
 
@@ -73,7 +73,7 @@ poly_metadata <- tbl_effort_4shiny %>%
 # EXPORT poly_metadata
 save(
   poly_metadata,
-  file = "C:/Users/Stacie.Hardy/Work/SMK/GitHub/ShinyApp_HarborSealAbundance/not_to_share/4app/poly_metadata.rda"
+  file = "C:/Users/Stacie.Hardy/Work/SMK/GitHub/shiny_app_pv_abundance/not_to_share/4app/poly_metadata.rda"
 ) # Update to wd folder once data are shareable
 
 last_surveyed <- tbl_effort_4shiny %>%
@@ -120,7 +120,7 @@ rm(con)
 
 # CREATE data_cube ~~~~~~~~~~~~~~~~~~~
 load(
-  "C:/Users/Stacie.Hardy/Work/SMK/GitHub/ShinyApp_HarborSealAbundance/not_to_share/akpv_datacube.rda"
+  "C:/Users/Stacie.Hardy/Work/SMK/GitHub/shiny_app_pv_abundance/not_to_share/akpv_datacube.rda"
 )
 data_cube <- akpv_datacube %>%
   data.frame() %>%
@@ -142,7 +142,7 @@ rm(akpv_datacube)
 # EXPORT data_cube (to parquet format for access from the application)
 write_dataset(
   data_cube,
-  path = "C:/Users/Stacie.Hardy/Work/SMK/GitHub/ShinyApp_HarborSealAbundance/not_to_share/4app/data_cube_dataset",
+  path = "C:/Users/Stacie.Hardy/Work/SMK/GitHub/shiny_app_pv_abundance/not_to_share/4app/data_cube_dataset",
   format = "parquet",
   partitioning = "stockname"
 ) # Update to wd folder once data are shareable
@@ -295,7 +295,7 @@ trend <- rbind(
 )
 save(
   trend,
-  file = "C:/Users/Stacie.Hardy/Work/SMK/GitHub/ShinyApp_HarborSealAbundance/not_to_share/4app/trend.rda"
+  file = "C:/Users/Stacie.Hardy/Work/SMK/GitHub/shiny_app_pv_abundance/not_to_share/4app/trend.rda"
 ) # Update to wd folder once data are shareable
 
 
@@ -343,7 +343,7 @@ abundance <- rbind(
 )
 save(
   abundance,
-  file = "C:/Users/Stacie.Hardy/Work/SMK/GitHub/ShinyApp_HarborSealAbundance/not_to_share/4app/abundance.rda"
+  file = "C:/Users/Stacie.Hardy/Work/SMK/GitHub/shiny_app_pv_abundance/not_to_share/4app/abundance.rda"
 ) # Update to wd folder once data are shareable
 
 
@@ -447,7 +447,7 @@ survey_polygons <- survey_polygons %>%
 # EXPORT survey_polygons (CHANGE MAPPING LOCATION ONCE APP IS SHAREABLE)
 saveRDS(
   survey_polygons,
-  file = "C:/Users/Stacie.Hardy/Work/SMK/GitHub/ShinyApp_HarborSealAbundance/not_to_share/4app/survey_polygons.rds"
+  file = "C:/Users/Stacie.Hardy/Work/SMK/GitHub/shiny_app_pv_abundance/not_to_share/4app/survey_polygons.rds"
 )
 
 # Clean up workspace

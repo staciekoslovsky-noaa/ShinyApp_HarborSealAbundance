@@ -1,22 +1,32 @@
 ## Install library packages -----------------------------------------
-library(tidyverse)
+# basic shiny packages needed
 library(shiny)
+library(shinyjs)
+library(shinyBS)
 library(shinythemes)
 library(shinydashboard)
 library(shinyWidgets)
-library(shinyjs)
-library(shinyBS)
+
+# packages for spatial visualization on map
 library(leaflet)
 library(leaflet.extras)
 library(leaflet.extras2)
-library(htmltools)
+
+# tools for data processing
+library(sf)
+library(tidyverse)
+
+# misc. tools for figure visualization
 library(viridis)
 library(highcharter)
 library(scales)
-library(geojsonio)
-library(sf)
+
+
+# other app tools
+library(htmltools)
 library(roll)
 library(arrow)
+
 
 sf::sf_use_s2(FALSE)
 
@@ -55,16 +65,16 @@ stock_polygons <- readRDS("data/stock_polygons.rds")
 haulout <- readRDS("data/survey_haulout.rds")
 survey_polygons <- readRDS("../not_to_share/4app/survey_polygons.rds")
 load(
-  "C:/Users/Stacie.Hardy/Work/SMK/GitHub/ShinyApp_HarborSealAbundance/not_to_share/4app/poly_metadata.rda"
+  "C:/Users/Stacie.Hardy/Work/SMK/GitHub/shiny_app_pv_abundance/not_to_share/4app/poly_metadata.rda"
 )
 load(
-  "C:/Users/Stacie.Hardy/Work/SMK/GitHub/ShinyApp_HarborSealAbundance/not_to_share/4app/abundance.rda"
+  "C:/Users/Stacie.Hardy/Work/SMK/GitHub/shiny_app_pv_abundance/not_to_share/4app/abundance.rda"
 )
 load(
-  "C:/Users/Stacie.Hardy/Work/SMK/GitHub/ShinyApp_HarborSealAbundance/not_to_share/4app/trend.rda"
+  "C:/Users/Stacie.Hardy/Work/SMK/GitHub/shiny_app_pv_abundance/not_to_share/4app/trend.rda"
 )
 data_cube_ds <- open_dataset(
-  "C:/Users/Stacie.Hardy/Work/SMK/GitHub/ShinyApp_HarborSealAbundance/not_to_share/4app/data_cube_dataset"
+  "C:/Users/Stacie.Hardy/Work/SMK/GitHub/shiny_app_pv_abundance/not_to_share/4app/data_cube_dataset"
 )
 
 message("All data loaded into memory")
