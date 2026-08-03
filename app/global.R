@@ -63,18 +63,18 @@ get_opacity <- function(x, bins) {
 ## Load data -----------------------------------------
 stock_polygons <- readRDS("data/stock_polygons.rds")
 haulout <- readRDS("data/survey_haulout.rds")
-survey_polygons <- readRDS("../not_to_share/4app/survey_polygons.rds")
+survey_polygons <- readRDS("data/survey_polygons.rds")
 load(
-  "C:/Users/Stacie.Hardy/Work/SMK/GitHub/shiny_app_pv_abundance/not_to_share/4app/poly_metadata.rda"
+  "data/poly_metadata.rda"
 )
 load(
-  "C:/Users/Stacie.Hardy/Work/SMK/GitHub/shiny_app_pv_abundance/not_to_share/4app/abundance.rda"
+  "data/abundance.rda"
 )
 load(
-  "C:/Users/Stacie.Hardy/Work/SMK/GitHub/shiny_app_pv_abundance/not_to_share/4app/trend.rda"
+  "data/trend.rda"
 )
 data_cube_ds <- open_dataset(
-  "C:/Users/Stacie.Hardy/Work/SMK/GitHub/shiny_app_pv_abundance/not_to_share/4app/data_cube_dataset"
+  "data/data_cube"
 )
 
 message("All data loaded into memory")
@@ -105,11 +105,13 @@ map <- survey_polygons %>%
 
 # Initialize informational windows
 introduction <- div(p(
-  "This application allows users to explore over 20 years of harbor seal population abundance and trend information within Alaska. Harbor seals are
-  found throughout much of Alaska's near-coastal marine waters and are an important indicator of healthy ecosystems. The Alaska Fisheries Science Center
-  (AFSC) has conducted aerial surveys for harbor seals in Alaska nearly every year since 1998. These aerial survey counts along with statistical modeling that accounts
-  for population dynamics and the proportion of seals in the water during surveys allows for estimates of abundance and trend across different spatial and temporal scales.
-
+  "This application allows users to explore over 20 years of harbor seal population abundance and trend 
+  information within Alaska. Harbor seals are found throughout much of Alaska's near-coastal marine waters 
+  and are an important indicator of healthy ecosystems. The Alaska Fisheries Science Center (AFSC) has 
+  conducted aerial surveys for harbor seals in Alaska nearly every year since 1998. These aerial 
+  survey counts along with statistical modeling that accounts for population dynamics and the proportion 
+  of seals in the water during surveys allows for estimates of abundance and trend across different spatial 
+  and temporal scales.
   
   More information about our harbor seal research can be found ",
   a(
@@ -120,29 +122,35 @@ introduction <- div(p(
 ))
 
 instructions <- div(p(
-  "This map displays polygons that represent survey units of harbor seals in Alaska, symbolized based on the most recent abundance estimates; polygons with larger seal
-  populations are both darker in color and less transparent. Hover over the survey unit polygon for more specific information about that particular site. The larger gray polygons represent
-  each harbor seal stock. Hover over the stock polygon to get the name of the stock.
+  "This map displays polygons that represent survey units of harbor seals in Alaska, symbolized based on the 
+  most recent abundance estimates; polygons with larger seal populations are both darker in color and less 
+  transparent. Hover over the survey unit polygon for more specific information about that particular site. 
+  The larger gray polygons represent each harbor seal stock. Hover over the stock polygon to get the 
+  name of the stock.
 
-  
-  Two figures represent summary information for the survey units shown in the map. The figures represent summary information for all the survey units, until a filter is applied.",
+  Two figures represent summary information for the survey units shown in the map. The figures represent 
+  summary information for all the survey units, until a filter is applied.",
   tags$ul(
     tags$li(
       "The ",
       strong("Abundance"),
-      " figure displays the total harbor seal abundance, the 95th percentile confidence interval, and the associated survey effort for all or the filtered survey units."
+      " figure displays the total harbor seal abundance, the 95th percentile confidence interval, 
+      and the associated survey effort for all or the filtered survey units."
     ),
     tags$li(
       "The",
       strong("Trend"),
-      " plot displays a predicted trend, the 95th percentile confidence interval, and the associated survey effort for all or the filtered survey units. The user can specify
-            the number of years of abundance data and thee type of abundance data (estimates or log of estimates) on which the trend should be calculated.
+      " plot displays a predicted trend, the 95th percentile confidence interval, and the associated 
+      survey effort for all or the filtered survey units. The user can specify the number of years of 
+      abundance data and thee type of abundance data (estimates or log of estimates) on which the trend 
+      should be calculated.
             "
     )
   ),
 
-  "Survey units (polygons) can be selected dynamically within the map, and the associated figures are updated dynamically when you click the \"Update Plot\"
-  button after making the filter selection. Filter options are as follows:",
+  "Survey units (polygons) can be selected dynamically within the map, and the associated figures are 
+  updated dynamically when you click the \"Update Plot\" button after making the filter selection. 
+  Filter options are as follows:",
   tags$ul(
     tags$li(
       strong("By Stock"),
@@ -153,34 +161,39 @@ instructions <- div(p(
       " - click on a single survey unit (polygon) within the map."
     ),
     tags$li(
-      strong("By Custom Polygon"),
-      " - use the pentagon button in the map to start drawing a user-defined custom polygon. Use the trash can button in the map to delete your custom polygon.
-            Only one polygon can be drawn at a time. The centroid of each survey unit must be encompassed within the drawn shape in order for it to be included in the filter."
-    ),
-    tags$li(
-      strong("By Custom Circle"),
-      " - use the circle button in the map to start drawing a circle at the starting point of interest. As the circle size changes, the radius of the circle
-  is displayed."
+      strong("By Custom Shape"),
+      " - use the pentagon or circle button in the map to start drawing a user-defined custom shape. 
+      The pentagon button allows you to draw a polygon with as many sides as you want, and the circle 
+      button allows you to draw a circle that expands as you drag the mouse away from your center point. 
+      Only one shape can be drawn at a time. The centroid of each survey unit must be encompassed within 
+      the drawn shape in order for it to be included in the filter. Use the trash can button in the map 
+      to delete your custom shape. "
     )
   )
 ))
 
-disclaimer <- "This is a prototype application. While the best efforts have been made to insure the highest quality, tools such as this are under constant development and are
-  subject to change. This application is developed and maintained by scientists at the NOAA Fisheries Alaska Fisheries Science Center and should not be construed as official
-  communication of NMFS, NOAA, or the U.S. Dept. of Commerce. Links and mentions of RStudio and Shiny should not be considered an endorsement by NOAA Fisheries or the U.S.
-  Federal Government."
+disclaimer <- "This is a prototype application. While the best efforts have been made to ensure the 
+highest quality, tools such as this are under constant development and are subject to change. This 
+application is developed and maintained by scientists at the NOAA Fisheries Alaska Fisheries Science 
+Center and should not be construed as official communication of NMFS, NOAA, or the U.S. Dept. of 
+Commerce. Links and mentions of RStudio and Shiny should not be considered an endorsement by NOAA 
+Fisheries or the U.S. Federal Government."
 
 contact_info <- div(p(
-  "This application was developed by Allison James as part of a summer 2022 internship, jointly sponsored by UW CICOES and NOAA Fisheries.",
+  "This application was developed by Allison James as part of a summer 2022 internship, 
+  jointly sponsored by UW CICOES and NOAA Fisheries.",
   br(),
   "The application is maintained by Stacie Koslovsky (stacie.koslovsky@noaa.gov).",
   br(),
-  "For questions regarding the harbor seal aerial survey project, contact Josh London (josh.london@noaa.gov), and
-                for questions regarding the statistical methods used to calculate the harbor seal abundance estimates, contact Brett McClintock (brett.mcclintock@noaa.gov)."
+  "For questions regarding the harbor seal aerial survey project, contact Josh London (josh.london@noaa.gov).",
+  br(),
+  "For questions regarding the statistical methods used to calculate the harbor seal abundance estimates, 
+  contact Brett McClintock (brett.mcclintock@noaa.gov)."
 ))
 
 data_access <- div(p(
-  "The data we are using to power this application are publicly available for viewing and download. Links to each of these datasets are below: ",
+  "The data we are using to power this application are publicly available for viewing and download. 
+  Links to each of these datasets are below: ",
   tags$ul(
     tags$li(a(
       "Alaska Harbor Seal Aerial Survey Units",
@@ -199,7 +212,8 @@ data_access <- div(p(
       )
     )
   ),
-  "For more information about abundance estimates for the Iliamna Lake survey units, please refer to the following resources:",
+  "For more information about abundance estimates for the Iliamna Lake survey units, 
+  please refer to the following resources:",
   tags$ul(
     tags$li(
       a(
@@ -215,3 +229,30 @@ data_access <- div(p(
     )
   )
 ))
+
+# Prep for leaflet
+survey_polygons$popup_html <- htmltools::htmlEscape(survey_polygons$popup_text)
+
+abund_bins <- c(0, 10, 100, 250, 500, 1000, 2500, 5000, 12000)
+
+pal <- colorBin(
+  palette = "inferno",
+  reverse = TRUE,
+  domain = na.omit(survey_polygons$abund_est),
+  bins = abund_bins,
+  pretty = FALSE,
+  na.color = "#00000000"
+)
+
+survey_polygons$fill_color <- pal(survey_polygons$abund_est)
+survey_polygons$fill_opacity <- get_opacity(
+  as.vector(survey_polygons$abund_est),
+  abund_bins
+)
+
+factpal <- colorFactor(
+  palette = viridisLite::viridis(nrow(stock_polygons), option = "H"),
+  domain = stock_polygons$stockname
+)
+
+stock_polygons$fill_color <- factpal(stock_polygons$stockname)

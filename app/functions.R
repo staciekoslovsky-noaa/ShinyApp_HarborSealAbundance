@@ -19,9 +19,9 @@ calculate_abundance <- function(
     abundance_summary <- abundance_input %>%
       group_by(year) %>%
       summarise(
-        abund_est = mean(abund, na.rm = TRUE),
-        abund_b95 = quantile(abund, 0.025, na.rm = TRUE),
-        abund_t95 = quantile(abund, 0.975, na.rm = TRUE),
+        abund_est = round(mean(abund, na.rm = TRUE), 2),
+        abund_b95 = round(quantile(abund, 0.025, na.rm = TRUE), 2),
+        abund_t95 = round(quantile(abund, 0.975, na.rm = TRUE), 2),
         .groups = "drop"
       )
 
@@ -156,9 +156,15 @@ create_trend_table <- function(
   data.frame(
     year = years,
     identifier = identifier,
-    trend_est = colMeans(trend_matrix, na.rm = TRUE),
-    trend_b95 = apply(trend_matrix, 2, quantile, probs = 0.025, na.rm = TRUE),
-    trend_t95 = apply(trend_matrix, 2, quantile, probs = 0.975, na.rm = TRUE),
+    trend_est = round(colMeans(trend_matrix, na.rm = TRUE), 2),
+    trend_b95 = round(
+      apply(trend_matrix, 2, quantile, probs = 0.025, na.rm = TRUE),
+      2
+    ),
+    trend_t95 = round(
+      apply(trend_matrix, 2, quantile, probs = 0.975, na.rm = TRUE),
+      2
+    ),
     row.names = NULL
   )
 }

@@ -68,15 +68,12 @@ server <- function(input, output, session) {
         data = survey_polygons,
         layerId = ~polyid,
         group = "stockname",
-        popup = ~ htmltools::htmlEscape(popup_text),
+        popup = ~popup_html,
         weight = 1,
-        fillColor = ~ pal(survey_polygons$abund_est),
-        color = ~ pal(survey_polygons$abund_est),
+        fillColor = ~fill_color,
+        color = ~fill_color,
         opacity = 0.7,
-        fillOpacity = get_opacity(
-          as.vector(survey_polygons$abund_est),
-          abund_bins
-        ),
+        fillOpacity = ~fill_opacity,
         label = survey_polygons$polyid,
         labelOptions = labelOptions(
           sticky = TRUE,
