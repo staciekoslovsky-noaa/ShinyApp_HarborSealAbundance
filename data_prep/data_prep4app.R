@@ -31,7 +31,7 @@ stock_polygons <- sf::st_read(
   geometry_column = "geom"
 ) %>%
   sf::st_transform(3338) %>%
-  sf::st_simplify() %>%
+  sf::st_simplify(dTolerance = 0.001) %>%
   sf::st_transform(crs = 4326) %>%
   sf::st_shift_longitude()
 
@@ -73,8 +73,8 @@ poly_metadata <- tbl_effort_4shiny %>%
 # EXPORT poly_metadata
 save(
   poly_metadata,
-  file = "C:/Users/Stacie.Hardy/Work/SMK/GitHub/shiny_app_pv_abundance/not_to_share/4app/poly_metadata.rda"
-) # Update to wd folder once data are shareable
+  file = "poly_metadata.rda"
+)
 
 last_surveyed <- tbl_effort_4shiny %>%
   select(polyid, last_surveyed) %>%
@@ -88,7 +88,7 @@ survey_polygons <- sf::st_read(
   geometry_column = "geom"
 ) %>%
   sf::st_transform(3338) %>%
-  sf::st_simplify() %>%
+  sf::st_simplify(dTolerance = 0.001) %>%
   sf::st_transform(crs = 4326) %>%
   sf::st_shift_longitude() %>%
   select(
@@ -120,7 +120,7 @@ rm(con)
 
 # CREATE data_cube ~~~~~~~~~~~~~~~~~~~
 load(
-  "C:/Users/Stacie.Hardy/Work/SMK/GitHub/shiny_app_pv_abundance/not_to_share/akpv_datacube.rda"
+  "C:\\Users\\Stacie.Hardy\\Work\\SMK\\Projects\\AS_HarborSeal_Coastal\\Data\\AbundanceEstimates\\akpv_datacube_20250929_fromBrett.rda"
 )
 data_cube <- akpv_datacube %>%
   data.frame() %>%
@@ -142,18 +142,17 @@ rm(akpv_datacube)
 # EXPORT data_cube (to parquet format for access from the application)
 write_dataset(
   data_cube,
-  path = "C:/Users/Stacie.Hardy/Work/SMK/GitHub/shiny_app_pv_abundance/not_to_share/4app/data_cube_dataset",
+  path = "C:/Users/Stacie.Hardy/Work/SMK/GitHub/shiny_app_pv_abundance/app/data/data_cube",
   format = "parquet",
   partitioning = "stockname"
-) # Update to wd folder once data are shareable
-
+)
 
 # Prepare trend data ~~~~~~~~~~~~~~~~~~~
 data_cube_polys <- unique(data_cube$polyid)
 year_first <- min(data_cube$year)
 year_last <- max(data_cube$year)
 n_years <- year_last - year_first + 1
-n_sims <- length(data_cube_4trend)
+n_sims <- length(data_cube)
 pop <- matrix(NA, nrow = n_sims, ncol = n_years)
 maxi <- n_years
 trend_length <- 8
@@ -163,12 +162,23 @@ p_positive <- numeric(length(data_cube_polys))
 
 for (p in seq_along(data_cube_polys)) {
   print(p)
+  poly_id <- data_cube_polys[p]
 
-  pop <- vapply(
-    data_cube_4trend,
-    function(x) x[data_cube_polys[p], ],
-    numeric(n_years)
-  )
+  pop <- data_cube %>%
+    dplyr::filter(polyid == poly_id) %>%
+    dplyr::group_by(cube, year) %>%
+    dplyr::summarise(abund = sum(abund), .groups = "drop") %>%
+    tidyr::pivot_wider(
+      names_from = year,
+      values_from = abund,
+      values_fill = 0
+    ) %>%
+    dplyr::arrange(cube)
+
+  pop <- as.matrix(pop[,
+    as.character(seq(year_first, year_last)),
+    drop = FALSE
+  ])
 
   pop <- t(pop) # rows = simulations, cols = years
 
@@ -278,7 +288,7 @@ trend <- rbind(
     rename(identifier = polyid) %>%
     mutate(trend_type = "linear_polyid"),
   trend_linear_glacial %>%
-    rename(identifier = "glacial") %>%
+    mutate(identifier = "glacial") %>%
     mutate(trend_type = "linear_glacial"),
   trend_prop_all %>%
     mutate(identifier = "all") %>%
@@ -290,13 +300,13 @@ trend <- rbind(
     rename(identifier = polyid) %>%
     mutate(trend_type = "prop_polyid"),
   trend_prop_glacial %>%
-    rename(identifier = "glacial") %>%
+    mutate(identifier = "glacial") %>%
     mutate(trend_type = "prop_glacial")
 )
 save(
   trend,
-  file = "C:/Users/Stacie.Hardy/Work/SMK/GitHub/shiny_app_pv_abundance/not_to_share/4app/trend.rda"
-) # Update to wd folder once data are shareable
+  file = "trend.rda"
+)
 
 
 # CREATE abundance datasets ~~~~~~~~~~~~~~~~~~~
@@ -339,12 +349,12 @@ abundance <- rbind(
     rename(identifier = polyid),
   abundance_glacial %>%
     mutate(abundance_type = "glacial") %>%
-    rename(identifier = "glacial")
+    mutate(identifier = "glacial")
 )
 save(
   abundance,
-  file = "C:/Users/Stacie.Hardy/Work/SMK/GitHub/shiny_app_pv_abundance/not_to_share/4app/abundance.rda"
-) # Update to wd folder once data are shareable
+  file = "abundance.rda"
+)
 
 
 # CREATE survey_polygons (with most recent abundance + trend) ~~~~~~~~~~~~~~~~~~~
@@ -409,7 +419,7 @@ survey_polygons <- survey_polygons %>%
           ", found in the ",
           stockname,
           " stock. In ",
-          most_recent_year,
+          year_last,
           ", the harbor seal abundance estimate for this survey unit was ",
           round(abund_est, 2),
           " with a confidence interval of ",
@@ -417,9 +427,9 @@ survey_polygons <- survey_polygons %>%
           "-",
           round(abund_t95, 2),
           ". The current 8-year trend in harbor seal abundance was based on abundance estimates from ",
-          most_recent_year - 8,
+          year_last - 8,
           "-",
-          most_recent_year,
+          year_last,
           " and was estimated as ",
           round(trend_est, 2),
           " seals per year; the probability of ",
@@ -447,7 +457,7 @@ survey_polygons <- survey_polygons %>%
 # EXPORT survey_polygons (CHANGE MAPPING LOCATION ONCE APP IS SHAREABLE)
 saveRDS(
   survey_polygons,
-  file = "C:/Users/Stacie.Hardy/Work/SMK/GitHub/shiny_app_pv_abundance/not_to_share/4app/survey_polygons.rds"
+  file = "survey_polygons.rds"
 )
 
 # Clean up workspace
