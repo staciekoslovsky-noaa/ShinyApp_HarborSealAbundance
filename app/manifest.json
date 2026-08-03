@@ -9,6 +9,11 @@
     "content_category": null,
     "has_parameters": false
   },
+  "environment": {
+    "r": {
+      "requires": "~=4.5.0"
+    }
+  },
   "packages": {
     "DBI": {
       "Source": "CRAN",
@@ -3597,6 +3602,37 @@
         "RemoteSha": "2.1.2"
       }
     },
+    "renv": {
+      "Source": "CRAN",
+      "Repository": "https://cran.rstudio.com",
+      "description": {
+        "Package": "renv",
+        "Type": "Package",
+        "Title": "Project Environments",
+        "Version": "1.2.3",
+        "Authors@R": "c(\n    person(\"Kevin\", \"Ushey\", role = c(\"aut\", \"cre\"), email = \"kevin@rstudio.com\",\n           comment = c(ORCID = \"0000-0003-2880-7407\")),\n    person(\"Hadley\", \"Wickham\", role = c(\"aut\"), email = \"hadley@rstudio.com\",\n           comment = c(ORCID = \"0000-0003-4757-117X\")),\n    person(\"Posit Software, PBC\", role = c(\"cph\", \"fnd\"))\n    )",
+        "Description": "A dependency management toolkit for R. Using 'renv', you can create\n    and manage project-local R libraries, save the state of these libraries to\n    a 'lockfile', and later restore your library as required. Together, these\n    tools can help make your projects more isolated, portable, and reproducible.",
+        "License": "MIT + file LICENSE",
+        "URL": "https://rstudio.github.io/renv/, https://github.com/rstudio/renv",
+        "BugReports": "https://github.com/rstudio/renv/issues",
+        "Imports": "utils",
+        "Suggests": "BiocManager, cli, compiler, covr, cpp11, curl, devtools,\ngenerics, gitcreds, jsonlite, jsonvalidate, knitr, miniUI,\nmodules, packrat, pak, R6, remotes, reticulate, rmarkdown,\nrstudioapi, shiny, testthat, uuid, waldo, yaml, webfakes",
+        "Encoding": "UTF-8",
+        "RoxygenNote": "7.3.3",
+        "VignetteBuilder": "knitr",
+        "Config/Needs/website": "tidyverse/tidytemplate",
+        "Config/testthat/edition": "3",
+        "Config/testthat/parallel": "true",
+        "Config/testthat/start-first": "bioconductor,python,install,restore,snapshot,retrieve,remotes",
+        "NeedsCompilation": "no",
+        "Packaged": "2026-05-16 18:11:48 UTC; kevin",
+        "Author": "Kevin Ushey [aut, cre] (ORCID: <https://orcid.org/0000-0003-2880-7407>),\n  Hadley Wickham [aut] (ORCID: <https://orcid.org/0000-0003-4757-117X>),\n  Posit Software, PBC [cph, fnd]",
+        "Maintainer": "Kevin Ushey <kevin@rstudio.com>",
+        "Repository": "CRAN",
+        "Date/Publication": "2026-05-16 21:50:15 UTC",
+        "Built": "R 4.5.3; ; 2026-07-28 13:38:56 UTC; windows"
+      }
+    },
     "reprex": {
       "Source": "CRAN",
       "Repository": "https://cran.rstudio.com",
@@ -5332,20 +5368,77 @@
     }
   },
   "files": {
+    ".Rprofile": {
+      "checksum": "676a78a642c4fbc1fc427c080bf469f6"
+    },
+    "data/abundance.rda": {
+      "checksum": "d9d0298930c81be7718c6fc7c9d4ebd1"
+    },
+    "data/data_cube/stockname=__HIVE_DEFAULT_PARTITION__/part-0.parquet": {
+      "checksum": "89af4df0c0310e8f31f7295224e85378"
+    },
+    "data/data_cube/stockname=Aleutians/part-0.parquet": {
+      "checksum": "204316ac1d0c9304f015b8122e800000"
+    },
+    "data/data_cube/stockname=Bristol%20Bay/part-0.parquet": {
+      "checksum": "234d42e3db05a245e07b61607d208f82"
+    },
+    "data/data_cube/stockname=Clarence%20Strait/part-0.parquet": {
+      "checksum": "41641d1db25149748d3493e19a2f2075"
+    },
+    "data/data_cube/stockname=Cook%20Inlet%2FShelikof%20Strait/part-0.parquet": {
+      "checksum": "4e7ce98d03e91e20edc98d76cf7e52c6"
+    },
+    "data/data_cube/stockname=Dixon%2FCape%20Decision/part-0.parquet": {
+      "checksum": "adad8cb090a88d0e172ee5e92bff3a4a"
+    },
+    "data/data_cube/stockname=Glacier%20Bay%2FIcy%20Strait/part-0.parquet": {
+      "checksum": "99416d92dc321d60f3daab1609d98090"
+    },
+    "data/data_cube/stockname=Lynn%20Canal%2FStephens%20Passage/part-0.parquet": {
+      "checksum": "593c3cda3bad563ae8c8177491950941"
+    },
+    "data/data_cube/stockname=N%20Kodiak/part-0.parquet": {
+      "checksum": "9c4d885742a91ce11a7864307393b796"
+    },
+    "data/data_cube/stockname=Pribilofs/part-0.parquet": {
+      "checksum": "8db3ffe48c7e43ff6f33364abfde2285"
+    },
+    "data/data_cube/stockname=Prince%20William%20Sound/part-0.parquet": {
+      "checksum": "4ec040484b1df254facaa4b410a46934"
+    },
+    "data/data_cube/stockname=S%20Kodiak/part-0.parquet": {
+      "checksum": "5d53ec9474b69b0cb303a9512cf762de"
+    },
+    "data/data_cube/stockname=Sitka%2FChatham%20Strait/part-0.parquet": {
+      "checksum": "2c666fdb81bb2ce695f1d99f237681aa"
+    },
+    "data/poly_metadata.rda": {
+      "checksum": "27e7590b2ccca5a33de8464363395846"
+    },
     "data/stock_polygons.rds": {
-      "checksum": "6d4e22cc1e2e43b0da04c25f3d571dd7"
+      "checksum": "1f756cf52bc2e2d7ef15dd3eb7ccbb34"
     },
     "data/survey_haulout.rds": {
-      "checksum": "08f82380db7e7220a92591e1ea3ff733"
+      "checksum": "46e38180ba3d98143bf6f70eaddb0937"
+    },
+    "data/survey_polygons.rds": {
+      "checksum": "71eff041886f9595ad857c82b3facf38"
+    },
+    "data/trend.rda": {
+      "checksum": "21761844897132dce18dd4b4763f6a37"
     },
     "functions.R": {
-      "checksum": "2ba0031352cf652b4de701f07a31c8c3"
+      "checksum": "edc5f2602717a01704982fe9446241d0"
     },
     "global.R": {
-      "checksum": "0532fa993e5682b67f9712f25de1c7e9"
+      "checksum": "b645635ad02f78d19b723729f307b7af"
+    },
+    "renv.lock": {
+      "checksum": "1848e98197cb190756f5ed2b34eb3c1f"
     },
     "server.R": {
-      "checksum": "626948d989186cdb264871a44b81e91a"
+      "checksum": "8d5ec23eb431e5b70266893b78a5ed60"
     },
     "ui.R": {
       "checksum": "ff23a8e2dc84d0148b8090a7bbaccb6e"
